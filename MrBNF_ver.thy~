@@ -1,0 +1,124 @@
+theory MrBNF_ver
+  imports Binders.MRBNF_Recursor
+begin
+
+datatype type = 
+    Nat
+  | Prod type type
+  | To type type
+  | OnlyTo type type
+
+typedef 'a :: infinite dpair = "{(x::'a,y). x \<noteq> y}"
+  unfolding mem_Collect_eq split_beta
+  by (metis (full_types) arb_element finite.intros(1) finite_insert fst_conv insertI1 snd_conv)
+
+setup_lifting type_definition_dpair
+
+lift_definition dfst :: "'a :: infinite dpair \<Rightarrow> 'a" is fst .
+lift_definition dsnd :: "'a :: infinite dpair \<Rightarrow> 'a" is snd .
+lift_definition dmap :: "('a \<Rightarrow> 'a) \<Rightarrow> 'a :: infinite dpair \<Rightarrow> 'a :: infinite dpair" is
+  "\<lambda>f (x, y). if bij f then (f x, f y) else (x, y)"
+  by (auto split: if_splits simp: bij_implies_inject)
+lift_definition dset :: "'a :: infinite dpair \<Rightarrow> 'a set" is "\<lambda>(a,b). {a, b}" .
+
+mrbnf "'a :: var dpair"
+  map: dmap
+  sets: bound: dset
+  bd: natLeq
+  subgoal
+    by (rule ext, transfer) auto
+  subgoal
+    by (rule ext, transfer) auto
+  subgoal
+    by (transfer) auto
+  subgoal
+    by (rule ext, transfer) auto
+  subgoal
+    by (rule infinite_regular_card_order_natLeq)
+  subgoal
+    by transfer (auto simp flip: finite_iff_ordLess_natLeq)
+  subgoal
+    by blast
+  subgoal
+    unfolding UNIV_I[THEN eqTrueI] simp_thms
+    by transfer auto
+  done
+
+binder_datatype 'var "term" = 
+  Zero
+  | Succ "'var term"
+  | Pred "'var term"
+  | If "'var term" "'var term" "'var term"
+  | Var 'var
+  | App "'var term" "'var term"
+  | Fix f::'var x::'var M::"'var term" binds f x in M
+  | Pair "'var term" "'var term"
+  | Let "(xy::'var) dpair" M::"'var term" N::"'var term" binds xy in N
+
+thm term.subst
+
+term tvsubst_term
+
+definition subst :: "'var term \<Rightarrow> 'var term \<Rightarrow> 'var \<Rightarrow> 'var term" where
+  subst M N y = tvsubst_term (y := n) M 
+
+inductive num :: "'var :: var term \<Rightarrow> bool" where
+  "num Zero"
+| "num n \<Longrightarrow> num (Succ n)"
+
+inductive val :: "'var :: var term \<Rightarrow> bool" where
+  "val (Var x)"
+| "num n \<Longrightarrow> val n"
+| "val V \<Longrightarrow> val W \<Longrightarrow> val (Pair V W)"
+| "val (Fix f x M)"
+
+inductive beta :: "'var :: var term \<Rightarrow> 'var :: var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
+  "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
+| "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
+| "M \<rightarrow> M' \<Longrightarrow> Succ M \<rightarrow> Succ M'"
+| "M \<rightarrow> M' \<Longrightarrow> Pred M \<rightarrow> Pred M'"
+| "M \<rightarrow> M' \<Longrightarrow> Pair M N \<rightarrow> Pair M' N"
+| "val V \<Longrightarrow> N \<rightarrow> N' \<Longrightarrow> Pair V N \<rightarrow> Pair V N'"
+| "M \<rightarrow> M' \<Longrightarrow> Let x y M N \<rightarrow> Let x y M' N"
+| "M \<rightarrow> M' \<Longrightarrow> If M N P \<rightarrow> If M' N P"
+| Ifz : "If Zero N P \<rightarrow> N"
+| Ifs : "If (Succ n) N P \<rightarrow> P"
+| Let : "Let x y (Pair V W) M \<rightarrow> M[V/x][W/y]"
+| PredZ: "Pred Zero \<rightarrow> Zero"
+| PredS: "Pred (Succ n) \<rightarrow> n"
+| FixBeta: "App (Fix f x M) V \<rightarrow> M[V/x][Fix f x M/f]"
+
+datatype 'var typing = 
+  Typing "'var :: var term" "type" (infix "::" 70)
+
+inductive disjunction :: "type \<Rightarrow> type \<Rightarrow> bool" (infix "||" 70) where
+  "Nat || Prod _ _"
+| "Nat || _ to _"
+| "Nat || _ only to _"
+| "Prod _ _ || _ to _"
+| "Prod _ _ || _ only to _"
+| "A || B \<Longrightarrow> B || A"
+
+inductive judgement :: "'var typing set \<Rightarrow> 'var typing set \<Rightarrow> bool" (infix "\<turnstile>" 10) where
+  id : "\<Gamma> \<union> {Var x :: A} \<turnstile> {Var x :: A} \<union> \<Delta>"
+| ZeroR : "\<Gamma> \<turnstile> {Zero :: Nat} \<union> \<Delta>"
+| SuccR: "\<Gamma> \<turnstile> {M :: Nat} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Succ M :: Nat} \<union> \<Delta>"
+| PredR: "\<Gamma> \<turnstile> {M :: Nat} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Pred M :: Nat} \<union> \<Delta>"
+| FixsR: "\<Gamma> \<union> {Var f :: A to B, Var x :: A} \<turnstile> {M :: B} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Fix f x M :: A to B} \<union> \<Delta> "
+| FixnR: "\<Gamma> \<union> {Var f :: A only to B, M :: B} \<turnstile> {Var x :: A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Fix f x M :: A only to B} \<union> \<Delta>"
+| AppR: "\<Gamma> \<union> {M :: B to A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {N :: B} \<union> \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> {App M N :: A} \<union> \<Delta>"
+| PairR: "\<Gamma> \<turnstile> {M :: A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {N :: B} \<union> \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> {Pair M N :: Prod A B} \<union> \<Delta>"
+| LetR: "\<Gamma> \<union> {M :: Prod B C} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Var x :: B, Var y :: C} \<turnstile> {N :: A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Let x y M N :: A} \<union> \<Delta>"
+| IfzR: "\<Gamma> \<turnstile> {M :: Nat} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {P :: A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {N :: A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {If M N P :: A} \<union> \<Delta>"
+| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> {M :: B} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {M :: A} \<turnstile> \<Delta>"
+| PairL1: "\<Gamma> \<union> {M :: A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Pair M N :: Prod A B} \<turnstile> \<Delta>"
+| AppL: "\<Gamma> \<union> {M :: B only to A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :: B} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {App M N :: A} \<turnstile> \<Delta>"
+| SuccL: "\<Gamma> \<union> {M :: Nat} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Succ M :: Nat} \<turnstile> \<Delta>"
+| PredL: "\<Gamma> \<union> {M :: Nat} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Pred M :: Nat} \<turnstile> \<Delta>"
+| IfzL1: "\<Gamma> \<union> {M :: Nat} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {If M N P :: A} \<turnstile> \<Delta>"
+| IfzL2: "\<Gamma> \<union> {N :: A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {P :: A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {If M N P :: A} \<turnstile> \<Delta>"
+| LetL1: "\<Gamma> \<union> {N :: A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x y M N :: A} \<turnstile> \<Delta>"
+| LetL2_1: "\<Gamma> \<union> {M :: Prod B1 B2} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :: A} \<turnstile> {Var x1 :: B1} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x1 x2 M N :: A} \<turnstile> \<Delta>"
+| LetL2_2: "\<Gamma> \<union> {M :: Prod B1 B2} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :: A} \<turnstile> {Var x2 :: B1} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x1 x2 M N :: A} \<turnstile> \<Delta>"
+
+end
