@@ -1,4 +1,4 @@
-theory Two_Sided_Typing
+theory nominal_ver
 imports Nominal2.Nominal2
 begin
 

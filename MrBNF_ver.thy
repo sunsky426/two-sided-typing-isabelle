@@ -173,26 +173,38 @@ inductive disjunction :: "type \<Rightarrow> type \<Rightarrow> bool" (infix "||
 | "Prod _ _ || OnlyTo _  _"
 | "A || B \<Longrightarrow> B || A"
 
+notation Set.insert (infixr ";" 50)
+
 inductive judgement :: "'var::var typing set \<Rightarrow> 'var::var typing set \<Rightarrow> bool" (infix "\<turnstile>" 10) where
-  id : "\<Gamma> \<union> {Var x :. A} \<turnstile> {Var x :. A} \<union> \<Delta>"
-| ZeroR : "\<Gamma> \<turnstile> {Zero :. Nat} \<union> \<Delta>"
-| SuccR: "\<Gamma> \<turnstile> {M :. Nat} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Succ M :. Nat} \<union> \<Delta>"
-| PredR: "\<Gamma> \<turnstile> {M :. Nat} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Pred M :. Nat} \<union> \<Delta>"
-| FixsR: "\<Gamma> \<union> {Var f :. To A B, Var x :. A} \<turnstile> {M :. B} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Fix f x M :. To A B} \<union> \<Delta> "
-| FixnR: "\<Gamma> \<union> {Var f :. OnlyTo A B, M :. B} \<turnstile> {Var x :. A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Fix f x M :. OnlyTo A B} \<union> \<Delta>"
-| AppR: "\<Gamma> \<union> {M :. To B A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {N :. B} \<union> \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> {App M N :. A} \<union> \<Delta>"
-| PairR: "\<Gamma> \<turnstile> {M :. A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {N :. B} \<union> \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> {Pair M N :. Prod A B} \<union> \<Delta>"
-| LetR: "\<Gamma> \<union> {M :. Prod B C} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Var (dfst x) :. B, Var (dsnd x) :. C} \<turnstile> {N :. A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {Let x M N :. A} \<union> \<Delta>"
-| IfzR: "\<Gamma> \<turnstile> {M :. Nat} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {P :. A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {N :. A} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> {If M N P :. A} \<union> \<Delta>"
-| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> {M :. B} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {M :. A} \<turnstile> \<Delta>"
-| PairL1: "\<Gamma> \<union> {M :. A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Pair M N :. Prod A B} \<turnstile> \<Delta>"
-| AppL: "\<Gamma> \<union> {M :. OnlyTo B A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :. B} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {App M N :. A} \<turnstile> \<Delta>"
-| SuccL: "\<Gamma> \<union> {M :. Nat} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Succ M :. Nat} \<turnstile> \<Delta>"
-| PredL: "\<Gamma> \<union> {M :. Nat} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Pred M :. Nat} \<turnstile> \<Delta>"
-| IfzL1: "\<Gamma> \<union> {M :. Nat} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {If M N P :. A} \<turnstile> \<Delta>"
-| IfzL2: "\<Gamma> \<union> {N :. A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {P :. A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {If M N P :. A} \<turnstile> \<Delta>"
-| LetL1: "\<Gamma> \<union> {N :. A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x M N :. A} \<turnstile> \<Delta>"
-| LetL2_1: "\<Gamma> \<union> {M :. Prod B1 B2} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :. A} \<turnstile> {Var (dfst x) :. B1} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x M N :. A} \<turnstile> \<Delta>"
-| LetL2_2: "\<Gamma> \<union> {M :. Prod B1 B2} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :. A} \<turnstile> {Var (dsnd x) :. B1} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x M N :. A} \<turnstile> \<Delta>"
+  id : "(Var x :. A) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta>"
+| ZeroR : "\<Gamma> \<turnstile> (Zero :. Nat) ; \<Delta>"
+| SuccR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Succ M :. Nat) ; \<Delta>"
+| PredR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Pred M :. Nat) ; \<Delta>"
+| FixsR: "(Var f :. To A B) ; (Var x :. A) ; \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. To A B) ; \<Delta>"
+| FixnR: "(Var f :. OnlyTo A B) ; (M :. B) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. OnlyTo A B) ; \<Delta>"
+| AppR: "(M :. To B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (App M N :. A) ; \<Delta>"
+| PairR: "\<Gamma> \<turnstile> (M :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (Pair M N :. Prod A B) ; \<Delta>"
+| LetR: "(M :. Prod B C) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Var (dfst x) :. B) ; (Var (dsnd x) :. C) ; \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Let x M N :. A) ; \<Delta>"
+| IfzR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (P :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (If M N P :. A) ; \<Delta>"
+| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> (M :. A); \<Gamma> \<turnstile> \<Delta>"
+| PairL1: "(M :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M N :. Prod A B) ; \<Gamma> \<turnstile> \<Delta>"
+| AppL: "(M :. OnlyTo B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. B) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| SuccL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
+| PredL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
+| IfzL1: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| IfzL2: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (P :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| LetL1: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| LetL2_1: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dfst x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| LetL2_2: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dsnd x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+
+lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
+  apply (induction \<Gamma> \<Delta> rule:judgement.induct)
+  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
+  done
+
+lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<turnstile> (M :. A) ; \<Delta>"
+  apply (induction \<Gamma> \<Delta> rule:judgement.induct)
+  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _]) 
+  done
 
 end

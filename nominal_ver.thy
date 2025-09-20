@@ -91,3 +91,5 @@ inductive judgement :: "typing set \<Rightarrow> typing set \<Rightarrow> bool" 
 | LetL1: "\<Gamma> \<union> {N :: A} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x y M N :: A} \<turnstile> \<Delta>"
 | LetL2_1: "\<Gamma> \<union> {M :: Prod B1 B2} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :: A} \<turnstile> {Var x1 :: B1} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x1 x2 M N :: A} \<turnstile> \<Delta>"
 | LetL2_2: "\<Gamma> \<union> {M :: Prod B1 B2} \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<union> {N :: A} \<turnstile> {Var x2 :: B1} \<union> \<Delta> \<Longrightarrow> \<Gamma> \<union> {Let x1 x2 M N :: A} \<turnstile> \<Delta>"
+
+end
