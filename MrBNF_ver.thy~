@@ -7,6 +7,7 @@ datatype "type" =
   | Prod "type" "type"
   | To "type" "type"
   | OnlyTo "type" "type"
+  | Ok
 
 typedef 'a :: infinite dpair = "{(x::'a,y). x \<noteq> y}"
   unfolding mem_Collect_eq split_beta
@@ -94,6 +95,13 @@ inductive val :: "'var::var term \<Rightarrow> bool" where
 | "val V \<Longrightarrow> val W \<Longrightarrow> val (Pair V W)"
 | "val (Fix f x M)"
 
+inductive stuckExp :: "'var::var term \<Rightarrow> bool" where
+  "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Pred V)"
+| "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Succ V)"
+| "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (If V _ _)"
+| "\<lbrakk> val V ; V \<noteq> Fix _ _ _ \<rbrakk> \<Longrightarrow> stuckExp (App V M)"
+| "\<lbrakk> val V ; V \<noteq> Pair _ _ \<rbrakk> \<Longrightarrow> stuckExp (Let x V M)"
+
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
   "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
 | "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
@@ -109,6 +117,10 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | PredZ: "Pred Zero \<rightarrow> Zero"
 | PredS: "Pred (Succ n) \<rightarrow> n"
 | FixBeta: "App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
+
+inductive beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>*" 70) where
+  refl: "M \<rightarrow>* M"
+| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>* P \<rbrakk> \<Longrightarrow> M \<rightarrow>* P"
 
 binder_inductive (no_auto_equiv) val
   sorry (*TODO: Dmitriy*)
@@ -173,38 +185,58 @@ inductive disjunction :: "type \<Rightarrow> type \<Rightarrow> bool" (infix "||
 | "Prod _ _ || OnlyTo _  _"
 | "A || B \<Longrightarrow> B || A"
 
-notation Set.insert (infixr ";" 50)
+notation Set.insert (infixr "," 50)
 
 inductive judgement :: "'var::var typing set \<Rightarrow> 'var::var typing set \<Rightarrow> bool" (infix "\<turnstile>" 10) where
-  Id : "(Var x :. A) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta>"
-| ZeroR : "\<Gamma> \<turnstile> (Zero :. Nat) ; \<Delta>"
-| SuccR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Succ M :. Nat) ; \<Delta>"
-| PredR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Pred M :. Nat) ; \<Delta>"
-| FixsR: "(Var f :. To A B) ; (Var x :. A) ; \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. To A B) ; \<Delta>"
-| FixnR: "(Var f :. OnlyTo A B) ; (M :. B) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. OnlyTo A B) ; \<Delta>"
-| AppR: "(M :. To B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (App M N :. A) ; \<Delta>"
-| PairR: "\<Gamma> \<turnstile> (M :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (Pair M N :. Prod A B) ; \<Delta>"
-| LetR: "(M :. Prod B C) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Var (dfst x) :. B) ; (Var (dsnd x) :. C) ; \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Let x M N :. A) ; \<Delta>"
-| IfzR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (P :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (If M N P :. A) ; \<Delta>"
-| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> (M :. A); \<Gamma> \<turnstile> \<Delta>"
-| PairL1: "(M :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M N :. Prod A B) ; \<Gamma> \<turnstile> \<Delta>"
-| AppL: "(M :. OnlyTo B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. B) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| SuccL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
-| PredL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
-| IfzL1: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| IfzL2: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (P :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| LetL1: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| LetL2_1: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dfst x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| LetL2_2: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dsnd x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+  Id : "(Var x :. A) , \<Gamma> \<turnstile> (Var x :. A) , \<Delta>"
+| ZeroR : "\<Gamma> \<turnstile> (Zero :. Nat) , \<Delta>"
+| SuccR: "\<Gamma> \<turnstile> (M :. Nat) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Succ M :. Nat) , \<Delta>"
+| PredR: "\<Gamma> \<turnstile> (M :. Nat) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Pred M :. Nat) , \<Delta>"
+| FixsR: "(Var f :. To A B) , (Var x :. A) , \<Gamma> \<turnstile> (M :. B) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. To A B) , \<Delta>"
+| FixnR: "(Var f :. OnlyTo A B) , (M :. B) , \<Gamma> \<turnstile> (Var x :. A) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. OnlyTo A B) , \<Delta>"
+| AppR: "(M :. To B A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) , \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (App M N :. A) , \<Delta>"
+| PairR: "\<Gamma> \<turnstile> (M :. A) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) , \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (Pair M N :. Prod A B) , \<Delta>"
+| LetR: "(M :. Prod B C) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Var (dfst x) :. B) , (Var (dsnd x) :. C) , \<Gamma> \<turnstile> (N :. A) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Let x M N :. A) , \<Delta>"
+| IfzR: "\<Gamma> \<turnstile> (M :. Nat) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (P :. A) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. A) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (If M N P :. A) , \<Delta>"
+| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> (M :. B) , \<Delta> \<Longrightarrow> (M :. A), \<Gamma> \<turnstile> \<Delta>"
+| PairL1: "(M :. A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M N :. Prod A B) , \<Gamma> \<turnstile> \<Delta>"
+| AppL: "(M :. OnlyTo B A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. B) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. A) , \<Gamma> \<turnstile> \<Delta>"
+| SuccL: "(M :. Nat) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Nat) , \<Gamma> \<turnstile> \<Delta>"
+| PredL: "(M :. Nat) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Nat) , \<Gamma> \<turnstile> \<Delta>"
+| IfzL1: "(M :. Nat) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) , \<Gamma> \<turnstile> \<Delta>"
+| IfzL2: "(N :. A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (P :. A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) , \<Gamma> \<turnstile> \<Delta>"
+| LetL1: "(N :. A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Let x M N :. A) , \<Gamma> \<turnstile> \<Delta>"
+| LetL2_1: "(M :. Prod B1 B2) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) , \<Gamma> \<turnstile> (Var (dfst x) :. B1) , \<Delta> \<Longrightarrow> (Let x M N :. A) , \<Gamma> \<turnstile> \<Delta>"
+| LetL2_2: "(M :. Prod B1 B2) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) , \<Gamma> \<turnstile> (Var (dsnd x) :. B1) , \<Delta> \<Longrightarrow> (Let x M N :. A) , \<Gamma> \<turnstile> \<Delta>"
+| OkVarR: "\<Gamma> \<turnstile> (Var x :. Ok) , \<Delta>"
+| OkL: "(M :. Ok) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) , \<Gamma> \<turnstile> \<Delta>"
+| OkR: "\<Gamma> \<turnstile> (M :. A) , \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (M :. Ok) , \<Delta>"
+| OkApL1: "(M :. OnlyTo Ok A) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. Ok) , \<Gamma> \<turnstile> \<Delta>"
+| OkApL2: "(N :. Ok) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. Ok) , \<Gamma> \<turnstile> \<Delta>"
+| OkSL: "(M :. Nat), \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Ok) , \<Gamma> \<turnstile> \<Delta>"
+| OkPL: "(M :. Nat) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Ok) , \<Gamma> \<turnstile> \<Delta>"
+| OkPrL_1: "(M1 :. Ok) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) , \<Gamma> \<turnstile> \<Delta>"
+| OkPrL_2: "(M2 :. Ok) , \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) , \<Gamma> \<turnstile> \<Delta>"
 
-lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
+lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) , \<Gamma> \<turnstile> \<Delta>"
   apply (induction \<Gamma> \<Delta> rule:judgement.induct)
   apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
   done
 
-lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<turnstile> (M :. A) ; \<Delta>"
+lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<turnstile> (M :. A) , \<Delta>"
   apply (induction \<Gamma> \<Delta> rule:judgement.induct)
-  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _]) 
+  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
   done
 
+inductive
+  type_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :[_]" 60) and
+  tau_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :T[_]" 60) and 
+  bottom_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :B[_]" 60) where
+  "val V \<Longrightarrow> V :[Ok]"
+| "num V \<Longrightarrow> V :[Nat]"
+| "\<lbrakk> V :[A] ; W :[B] \<rbrakk> \<Longrightarrow> Pair V W :[Prod A B]"
+| "(V :[A] \<Longrightarrow> M[V <- x][Fix f x M <- f] :B[B]) \<Longrightarrow> Fix f x M :[To A B]" 
+| "(M[V <- x][Fix f x M <- f] :T[B] \<Longrightarrow> V :[A]) \<Longrightarrow> Fix f x M :[OnlyTo A B]"
+| "\<lbrakk> M \<rightarrow>* V ; val V ; V :[A] \<rbrakk> \<Longrightarrow> M :T[A]"
+ 
 end
