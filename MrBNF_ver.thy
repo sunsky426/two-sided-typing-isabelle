@@ -95,6 +95,13 @@ inductive val :: "'var::var term \<Rightarrow> bool" where
 | "val V \<Longrightarrow> val W \<Longrightarrow> val (Pair V W)"
 | "val (Fix f x M)"
 
+inductive stuckExp :: "'var::var term \<Rightarrow> bool" where
+  "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Pred V)"
+| "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Succ V)"
+| "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (If V _ _)"
+| "\<lbrakk> val V ; V \<noteq> Fix _ _ _ \<rbrakk> \<Longrightarrow> stuckExp (App V M)"
+| "\<lbrakk> val V ; V \<noteq> Pair _ _ \<rbrakk> \<Longrightarrow> stuckExp (Let x V M)"
+
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
   "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
 | "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
@@ -111,24 +118,12 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | PredS: "Pred (Succ n) \<rightarrow> n"
 | FixBeta: "App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
 
+inductive beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>*" 70) where
+  refl: "M \<rightarrow>* M"
+| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>* P \<rbrakk> \<Longrightarrow> M \<rightarrow>* P"
 
-coinductive diverges ("_ \<Up>") where
+coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
-
-abbreviation "VV x \<equiv> Var (Variable x)"
-
-lemma "(App (Fix (Variable 0) (Variable 1) (App (Var (Variable 1)) (Var (Variable 1))))
-            (Fix (Variable 2) (Variable 3) (App (Var (Variable 3)) (Var (Variable 3))))) \<Up>"
-  apply (coinduction rule: diverges.coinduct)
-  apply (rule exI conjI)+
-   apply (rule refl)
-  apply (rule conjI)
-   apply (rule FixBeta)
-  apply simp
-  apply (rule disjI1)
-   apply (rule exI[where x = "(Variable 2 \<leftrightarrow> Variable 0)(Variable 3 := Variable 1, Variable 1 := Variable 3)"])
-  apply (auto simp: id_on_def swap_def intro!: involuntory_imp_bij)
-  sorry
 
 binder_inductive (no_auto_equiv) val
   sorry (*TODO: Dmitriy*)
@@ -193,9 +188,9 @@ inductive disjunction :: "type \<Rightarrow> type \<Rightarrow> bool" (infix "||
 | "Prod _ _ || OnlyTo _  _"
 | "A || B \<Longrightarrow> B || A"
 
-notation List.insert (infixr ";" 50)
+notation Set.insert (infixr ";" 50)
 
-inductive judgement :: "'var::var typing list \<Rightarrow> 'var::var typing list \<Rightarrow> bool" (infix "\<turnstile>" 10) where
+inductive judgement :: "'var::var typing set \<Rightarrow> 'var::var typing set \<Rightarrow> bool" (infix "\<turnstile>" 10) where
   Id : "(Var x :. A) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta>"
 | ZeroR : "\<Gamma> \<turnstile> (Zero :. Nat) ; \<Delta>"
 | SuccR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Succ M :. Nat) ; \<Delta>"
@@ -239,7 +234,19 @@ lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Ga
 
 lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<turnstile> (M :. A) ; \<Delta>"
   apply (induction \<Gamma> \<Delta> rule:judgement.induct)
-  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _]) 
+  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
   done
+
+inductive
+  type_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :[_]" 60) and
+  tau_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :T[_]" 60) and 
+  bottom_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :B[_]" 60) where
+  "val V \<Longrightarrow> V :[Ok]"
+| "num V \<Longrightarrow> V :[Nat]"
+| "\<lbrakk> V :[A] ; W :[B] \<rbrakk> \<Longrightarrow> Pair V W :[Prod A B]"
+| "(V :[A] \<Longrightarrow> M[V <- x][Fix f x M <- f] :B[B]) \<Longrightarrow> Fix f x M :[To A B]" 
+| "(M[V <- x][Fix f x M <- f] :T[B] \<Longrightarrow> V :[A]) \<Longrightarrow> Fix f x M :[OnlyTo A B]"
+| "\<lbrakk> M \<rightarrow>* V ; val V ; V :[A] \<rbrakk> \<Longrightarrow> M :T[A]"
+| "M :T[A] \<or> M \<Up> \<Longrightarrow> M :B[A]"
 
 end
