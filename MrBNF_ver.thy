@@ -237,16 +237,18 @@ lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<tur
   apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
   done
 
-inductive
-  type_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :[_]" 60) and
-  tau_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :T[_]" 60) and 
-  bottom_semantics :: "'var :: var term \<Rightarrow> type \<Rightarrow> bool" ("_ :B[_]" 60) where
-  "val V \<Longrightarrow> V :[Ok]"
-| "num V \<Longrightarrow> V :[Nat]"
-| "\<lbrakk> V :[A] ; W :[B] \<rbrakk> \<Longrightarrow> Pair V W :[Prod A B]"
-| "(V :[A] \<Longrightarrow> M[V <- x][Fix f x M <- f] :B[B]) \<Longrightarrow> Fix f x M :[To A B]" 
-| "(M[V <- x][Fix f x M <- f] :T[B] \<Longrightarrow> V :[A]) \<Longrightarrow> Fix f x M :[OnlyTo A B]"
-| "\<lbrakk> M \<rightarrow>* V ; val V ; V :[A] \<rbrakk> \<Longrightarrow> M :T[A]"
-| "M :T[A] \<or> M \<Up> \<Longrightarrow> M :B[A]"
+definition "Vals0 = {V. val V}"
+
+fun
+  type_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<lblot>_\<rblot>" 90) and
+  tau_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<T>\<lblot>_\<rblot>" 90) and 
+  bottom_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<T>\<^sub>\<bottom>\<lblot>_\<rblot>" 90) where
+  "\<lblot>Ok\<rblot> = Vals0"
+| "\<lblot>Nat\<rblot> = {V. num V}"
+| "\<lblot>Prod A B\<rblot> = case_prod Pair ` (\<lblot>A\<rblot> \<times> \<lblot>B\<rblot>)"
+| "\<lblot>To A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. V \<in> \<lblot>A\<rblot> \<longrightarrow> M[V <- x][Fix f x M <- f] \<in> \<T>\<^sub>\<bottom>\<lblot>B\<rblot>}"
+| "\<lblot>OnlyTo A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. M[V <- x][Fix f x M <- f] \<in> \<T>\<lblot>B\<rblot> \<longrightarrow> V \<in> \<lblot>A\<rblot>}"
+| "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
+| "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
 
 end
