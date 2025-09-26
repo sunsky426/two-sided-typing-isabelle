@@ -226,7 +226,11 @@ inductive judgement :: "'var::var typing list \<Rightarrow> 'var::var typing lis
 | OkPrL_1: "(M1 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
 | OkPrL_2: "(M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
 
-binder_inductive judgement (*TODO*)
+print_attributes
+binder_inductive (no_auto_equiv) judgement
+  sorry
+
+thm judgement.strong_induct
 
 lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
   apply (induction \<Gamma> \<Delta> rule:judgement.induct)
