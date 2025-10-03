@@ -87,7 +87,6 @@ function plug :: "'var::var ctx \<Rightarrow> 'var term \<Rightarrow> 'var term"
 | "plug (CtxLet2 x M ctx) X = Let x M (plug ctx X)"
   sorry
 
-
 definition usubst ("_[_ <- _]" [1000, 49, 49] 1000) where
   "usubst t u x = tvsubst_term (Var(x := u)) t"
 
@@ -143,6 +142,16 @@ inductive val :: "'var::var term \<Rightarrow> bool" where
 | "val V \<Longrightarrow> val W \<Longrightarrow> val (Pair V W)"
 | "val (Fix f x M)"
 
+inductive eval_ctx :: "'var::var ctx \<Rightarrow> bool" where
+  "eval_ctx (CtxAppR (Fix f x M) Hole)"
+| "eval_ctx (CtxAppL Hole N)"
+| "eval_ctx (CtxSucc Hole)"
+| "eval_ctx (CtxPred Hole)"
+| "eval_ctx (CtxPairL Hole N)"
+| "val V \<Longrightarrow> eval_ctx (CtxPairR V Hole)"
+| "eval_ctx (CtxLet1 x Hole N)"
+| "eval_ctx (CtxIf1 Hole N P)"
+
 inductive stuckExp :: "'var::var term \<Rightarrow> bool" where
   "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Pred V)"
 | "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Succ V)"
@@ -152,24 +161,10 @@ inductive stuckExp :: "'var::var term \<Rightarrow> bool" where
 
 inductive stuck :: "'var::var term \<Rightarrow> bool" where
   "stuckExp M \<Longrightarrow> stuck M"
-| "stuck N \<Longrightarrow> stuck (App (Fix f x M) N)"
-| "stuck M \<Longrightarrow> stuck (App M N)"
-| "stuck M \<Longrightarrow> stuck (Succ M)"
-| "stuck M \<Longrightarrow> stuck (Pred M)"
-| "stuck M \<Longrightarrow> stuck (Pair M N)"
-| "val V \<Longrightarrow> stuck N \<Longrightarrow> stuck (Pair V N)"
-| "stuck M \<Longrightarrow> stuck (Let x M N)"
-| "stuck M \<Longrightarrow> stuck (If M N P)"
+| "eval_ctx E \<Longrightarrow> stuck M \<Longrightarrow> stuck (plug E M)"
 
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
-  "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
-| "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
-| "M \<rightarrow> M' \<Longrightarrow> Succ M \<rightarrow> Succ M'"
-| "M \<rightarrow> M' \<Longrightarrow> Pred M \<rightarrow> Pred M'"
-| "M \<rightarrow> M' \<Longrightarrow> Pair M N \<rightarrow> Pair M' N"
-| "val V \<Longrightarrow> N \<rightarrow> N' \<Longrightarrow> Pair V N \<rightarrow> Pair V N'"
-| "M \<rightarrow> M' \<Longrightarrow> Let xy M N \<rightarrow> Let xy M' N"
-| "M \<rightarrow> M' \<Longrightarrow> If M N P \<rightarrow> If M' N P"
+  "eval_ctx E \<Longrightarrow> M \<rightarrow> M' \<Longrightarrow> E[[M]] \<rightarrow> E[[M']]"
 | Ifz : "If Zero N P \<rightarrow> N"
 | Ifs : "If (Succ n) N P \<rightarrow> P"
 | Let : "Let xy (Pair V W) M \<rightarrow> M[V <- dfst xy][W <- dsnd xy]"
