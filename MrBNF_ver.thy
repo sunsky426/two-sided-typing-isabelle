@@ -102,6 +102,17 @@ inductive stuckExp :: "'var::var term \<Rightarrow> bool" where
 | "\<lbrakk> val V ; V \<noteq> Fix _ _ _ \<rbrakk> \<Longrightarrow> stuckExp (App V M)"
 | "\<lbrakk> val V ; V \<noteq> Pair _ _ \<rbrakk> \<Longrightarrow> stuckExp (Let x V M)"
 
+inductive stuck :: "'var::var term \<Rightarrow> bool" where
+  "stuckExp M \<Longrightarrow> stuck M"
+| "stuck N \<Longrightarrow> stuck (App (Fix f x M) N)"
+| "stuck M \<Longrightarrow> stuck (App M N)"
+| "stuck M \<Longrightarrow> stuck (Succ M)"
+| "stuck M \<Longrightarrow> stuck (Pred M)"
+| "stuck M \<Longrightarrow> stuck (Pair M N)"
+| "val V \<Longrightarrow> stuck N \<Longrightarrow> stuck (Pair V N)"
+| "stuck M \<Longrightarrow> stuck (Let x M N)"
+| "stuck M \<Longrightarrow> stuck (If M N P)"
+
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
   "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
 | "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
@@ -124,6 +135,15 @@ inductive beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow
 
 coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
+
+lemma "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
+  apply(induction M)
+  apply(simp_all add:num.intros val.intros)
+  apply(erule disjE) (*I wanted to apply to all subgoals here*)
+  sorry
+
+lemma "(\<exists>N. M \<rightarrow>* N \<and> val N) \<or> (\<exists>N. M \<rightarrow>* N \<and> stuck N) \<or> (M \<Up>)"
+  sorry
 
 binder_inductive (no_auto_equiv) val
   sorry (*TODO: Dmitriy*)
