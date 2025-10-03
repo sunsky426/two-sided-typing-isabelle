@@ -271,4 +271,22 @@ fun
 | "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
 | "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
 
+inductive blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
+  "blocked z (App (Fix f x M) (Var z))"
+| "blocked z N \<Longrightarrow> blocked z (App (Fix f x M) N)"
+| "blocked z (App (Var z) N)"
+| "blocked z M ==> blocked z (App M N)"
+| "blocked z (Succ (Var z))"
+| "blocked z M \<Longrightarrow> blocked z (Succ M)"
+| "blocked z (Pred (Var z))"
+| "blocked z M \<Longrightarrow> blocked z (Pred M)"
+| "blocked z (Pair (Var z) N)"
+| "blocked z M ==> blocked z (Pair M N)"
+| "val V ==> blocked z (Pair V (Var z))"
+| "val V ==> blocked z M ==> blocked z (Pair V M)"
+| "blocked z (Let x (Var z) N)"
+| "blocked z M \<Longrightarrow> blocked z (Let x M N)"
+| "blocked z (If (Var z) N P)"
+| "blocked z M \<Longrightarrow> blocked z (If M N P)"
+
 end
