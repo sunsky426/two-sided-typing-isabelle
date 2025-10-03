@@ -56,8 +56,56 @@ binder_datatype 'var "term" =
   | Pair "'var term" "'var term"
   | Let "(xy::'var) dpair" M::"'var term" N::"'var term" binds xy in N
 
+binder_datatype 'var "ctx" =
+  Hole
+  | CtxSucc "'var ctx"
+  | CtxPred "'var ctx"
+  | CtxIf1 "'var ctx" "'var term" "'var term"
+  | CtxIf2 "'var term" "'var ctx" "'var term"
+  | CtxIf3 "'var term" "'var term" "'var ctx"
+  | CtxAppL "'var ctx" "'var term"
+  | CtxAppR "'var term" "'var ctx"
+  | CtxFix f::'var x::'var M::"'var ctx" binds f x in M
+  | CtxPairL "'var ctx" "'var term"
+  | CtxPairR "'var term" "'var ctx"
+  | CtxLet1 "(xy::'var) dpair" M::"'var ctx" N::"'var term" binds xy in N
+  | CtxLet2 "(xy::'var) dpair" M::"'var term" N::"'var ctx" binds xy in N
+
+function plug :: "'var::var ctx \<Rightarrow> 'var term \<Rightarrow> 'var term" ("_[[_]]")  where
+  "plug Hole X = X"
+| "plug (CtxSucc ctx) X = Succ (plug ctx X)"
+| "plug (CtxPred ctx) X = Pred (plug ctx X)"
+| "plug (CtxIf1 ctx M N) X = If (plug ctx X) M N"
+| "plug (CtxIf2 M ctx N) X = If M (plug ctx X) N"
+| "plug (CtxIf3 M N ctx) X = If M N (plug ctx X)"
+| "plug (CtxAppL ctx N) X = App (plug ctx X) N"
+| "plug (CtxAppR M ctx) X = App M (plug ctx X)"
+| "plug (CtxFix f x ctx) X = Fix f x (plug ctx X)"
+| "plug (CtxPairL ctx N) X = Pair (plug ctx X) N"
+| "plug (CtxPairR M ctx) X = Pair M (plug ctx X)"
+| "plug (CtxLet1 x ctx N) X = Let x (plug ctx X) N"
+| "plug (CtxLet2 x M ctx) X = Let x M (plug ctx X)"
+  sorry
+
+
 definition usubst ("_[_ <- _]" [1000, 49, 49] 1000) where
   "usubst t u x = tvsubst_term (Var(x := u)) t"
+
+function ctx_subst :: "'var::var ctx \<Rightarrow> 'var term \<Rightarrow> 'var \<Rightarrow> 'var ctx" ("_[[_<-_]]" [1000, 49, 49] 1000) where
+  "ctx_subst Hole t z = Hole"
+| "ctx_subst (CtxSucc ctx) t z = CtxSucc (ctx_subst ctx t z)"
+| "ctx_subst (CtxPred ctx) t z = CtxPred (ctx_subst ctx t z)"
+| "ctx_subst (CtxIf1 ctx M N) t z = CtxIf1 (ctx_subst ctx t z) M[t <- z] N[t <- z]"
+| "ctx_subst (CtxIf2 M ctx N) t z = CtxIf2 M[t <- z] (ctx_subst ctx t z) N[t <- z]"
+| "ctx_subst (CtxIf3 M N ctx) t z = CtxIf3 M[t <- z] N[t <- z] (ctx_subst ctx t z)"
+| "ctx_subst (CtxAppL ctx N) t z = CtxAppL (ctx_subst ctx t z) N[t <- z]"
+| "ctx_subst (CtxAppR M ctx) t z = CtxAppR M[t <- z] (ctx_subst ctx t z)"
+| "ctx_subst (CtxFix f x ctx) t z = CtxFix f x (ctx_subst ctx t z)"
+| "ctx_subst (CtxPairL ctx N) t z = CtxPairL (ctx_subst ctx t z) N"
+| "ctx_subst (CtxPairR M ctx) t z = CtxPairR M[t <- z] (ctx_subst ctx t z)"
+| "ctx_subst (CtxLet1 x ctx N) t z = CtxLet1 x (ctx_subst ctx t z) N[t <- z]"
+| "ctx_subst (CtxLet2 x M ctx) t z = CtxLet2 x M[t <- z] (ctx_subst ctx t z)"
+  sorry
 
 lemma SSupp_term_fun_upd: "SSupp_term (Var(x :: 'var :: var := u)) \<subseteq> {x}"
   by (auto simp: SSupp_term_def tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
@@ -289,4 +337,48 @@ inductive blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" wh
 | "blocked z (If (Var z) N P)"
 | "blocked z M \<Longrightarrow> blocked z (If M N P)"
 
+lemma B1: "\<lbrakk> M[N <- z] = plug E P; \<not> blocked z M \<rbrakk> \<Longrightarrow> \<exists>F P'. (M = plug F P' \<and> E = F[[N<-z]] \<and> P = P'[N<-z])"
+proof(induction E)
+  case 1
+  have "Hole[[P]] = P" by simp
+  then have "M[N <- z] = P" by auto
+  obtain "F = Hole" "P' = M"
+  then show ?case sorry
+next
+  case (2 E)
+  then show ?case sorry
+next
+  case (3 E)
+  then show ?case sorry
+next
+  case (4 E x2 x3)
+  then show ?case sorry
+next
+  case (5 x1 E x3)
+  then show ?case sorry
+next
+  case (6 x1 x2 E)
+  then show ?case sorry
+next
+  case (7 E x2)
+  then show ?case sorry
+next
+  case (8 x1 E)
+  then show ?case sorry
+next
+  case (9 x1 x2 E)
+  then show ?case sorry
+next
+  case (10 E x2)
+  then show ?case sorry
+next
+  case (11 x1 E)
+  then show ?case sorry
+next
+  case (12 x1 E x3)
+  then show ?case sorry
+next
+  case (13 x1 x2 E)
+  then show ?case sorry
+qed
 end
