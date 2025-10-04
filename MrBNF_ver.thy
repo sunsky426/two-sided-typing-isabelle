@@ -136,15 +136,17 @@ inductive beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow
 coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
 
-lemma "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
-  apply(induction M)
-  apply(simp_all add:num.intros val.intros)
-  apply(erule disjE) (*I wanted to apply to all subgoals here*)
-  sorry
-
-lemma "(\<exists>N. M \<rightarrow>* N \<and> val N) \<or> (\<exists>N. M \<rightarrow>* N \<and> stuck N) \<or> (M \<Up>)"
-  sorry
-
+lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
+proof (induction M)
+  case (6 M N)
+  then show ?case
+    by (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+next
+  case (9 M N P)
+  then show ?case
+    by (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+qed (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+  
 binder_inductive (no_auto_equiv) val
   sorry (*TODO: Dmitriy*)
 
@@ -271,6 +273,21 @@ fun
 | "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
 | "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
 
+type_synonym 'var valuation = "('var \<times> 'var term) list"
+
+fun eval :: "'var::var valuation \<Rightarrow> 'var term \<Rightarrow> 'var term" where
+  "eval Nil M = M"
+| "eval ((x,t) # ps) M = eval ps (M[t <- x])"
+
+inductive typing_semanticsL :: "'var::var valuation \<Rightarrow> 'var typing \<Rightarrow> bool" where
+  "eval \<theta> M \<in> \<T>\<lblot>A\<rblot> \<Longrightarrow> typing_semanticsL \<theta> (M :. A)"
+
+inductive typing_semanticsR :: "'var::var valuation \<Rightarrow> 'var typing \<Rightarrow> bool" where
+  "eval \<theta> M \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot> \<Longrightarrow> typing_semanticsR \<theta> (M :. A)"
+
+inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing set \<Rightarrow> bool" (infix "\<Turnstile>" 10) where
+  "\<forall>\<theta>. (\<forall>\<tau>\<in>L. typing_semanticsL \<theta> \<tau>) \<longrightarrow> (\<forall>\<tau>\<in>R. typing_semanticsR \<theta> \<tau>) \<Longrightarrow> L \<Turnstile> R"
+
 inductive blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
   "blocked z (App (Fix f x M) (Var z))"
 | "blocked z N \<Longrightarrow> blocked z (App (Fix f x M) N)"
@@ -288,5 +305,11 @@ inductive blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" wh
 | "blocked z M \<Longrightarrow> blocked z (Let x M N)"
 | "blocked z (If (Var z) N P)"
 | "blocked z M \<Longrightarrow> blocked z (If M N P)"
+
+inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
+  "\<exists>N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
+
+lemma b3: "M[N <- z] \<rightarrow> P \<Longrightarrow> blocked z M \<or> (\<exists>M'. M \<rightarrow> M' \<and> P = M'[N <- z])"
+  sorry
 
 end
