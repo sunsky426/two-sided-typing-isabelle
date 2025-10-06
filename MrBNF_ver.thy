@@ -289,25 +289,83 @@ inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing 
   "\<forall>\<theta>. (\<forall>\<tau>\<in>L. typing_semanticsL \<theta> \<tau>) \<longrightarrow> (\<forall>\<tau>\<in>R. typing_semanticsR \<theta> \<tau>) \<Longrightarrow> L \<Turnstile> R"
 
 inductive blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
-  "blocked z (App (Fix f x M) (Var z))"
+  "blocked z (Var z)"
 | "blocked z N \<Longrightarrow> blocked z (App (Fix f x M) N)"
-| "blocked z (App (Var z) N)"
-| "blocked z M ==> blocked z (App M N)"
-| "blocked z (Succ (Var z))"
+| "blocked z M \<Longrightarrow> blocked z (App M N)"
 | "blocked z M \<Longrightarrow> blocked z (Succ M)"
-| "blocked z (Pred (Var z))"
 | "blocked z M \<Longrightarrow> blocked z (Pred M)"
-| "blocked z (Pair (Var z) N)"
-| "blocked z M ==> blocked z (Pair M N)"
-| "val V ==> blocked z (Pair V (Var z))"
-| "val V ==> blocked z M ==> blocked z (Pair V M)"
-| "blocked z (Let x (Var z) N)"
+| "blocked z M \<Longrightarrow> blocked z (Pair M N)"
+| "val V \<Longrightarrow> blocked z M ==> blocked z (Pair V M)"
 | "blocked z M \<Longrightarrow> blocked z (Let x M N)"
-| "blocked z (If (Var z) N P)"
 | "blocked z M \<Longrightarrow> blocked z (If M N P)"
 
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
   "\<exists>N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
+
+lemma b2:
+  assumes "blocked x E"
+  shows "M[N <- z] = E[P <- x]
+     \<Longrightarrow> x \<noteq> z
+     \<Longrightarrow> x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N
+     \<Longrightarrow> \<not> (blocked z M)
+     \<Longrightarrow> \<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
+  using \<open>blocked x E\<close>
+proof (induction rule:blocked.induct)
+  case (1 x)
+  have "M[N <- z] = P" by (simp add: "1.prems"(1))
+  obtain F P' where "F = Var x" "P' = M" by simp
+  show ?case by (metis "1.prems"(2) \<open>M[N <- z] = P\<close> usubst_simps(5))
+next
+  case (2 x E f a Q)
+  thm "2.prems"
+  have "x \<notin> FVars_term Q" sledgehammer sorry
+  have "M[N <- z] = App (Fix f a Q) E[P <- x]" sorry
+  obtain Q' R where "M = App (Fix f x Q') R" sorry
+  have "Q'[N <- a] = Q" and "E[N <- z] = E[P <- x]" sorry
+  have "\<not> blocked z R" sorry
+  obtain E' P' where "R = E'[P' <- x]" and "E'[N <- z] = E" and "P'[N <- z] = P" sorry
+  obtain F where "F = App (Fix f x Q') E'" sorry 
+  then show ?case sorry
+next
+  case (3 z M N)
+  then show ?case sorry
+next                                                                       
+  case (4 x E)
+  have "M[N <- z] = Succ(E[P <- x])" by (simp add: "4.prems"(1))
+  then obtain Q where "M = Succ Q" sorry
+  from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
+    using \<open>M = Succ Q\<close> blocked.intros(4) by auto
+  have "Q[N <- z] = E[P <- x]"
+    using \<open>M = Succ Q\<close> \<open>M[N <- z] = Succ E[P <- x]\<close>
+    by auto
+  from "4.IH" obtain E' P' where "P'[N <- z] = P" and "E = E'[N <- z]" sorry
+  obtain F where "F = Succ E'" by simp
+  show ?case sorry
+next
+  case (5 x E)
+  have "M[N <- z] = Pred(E[P <- x])" by (simp add: "5.prems"(1))
+  then obtain Q where "M = Pred Q" sorry
+  from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
+    using \<open>M = Pred Q\<close> blocked.intros(5) by auto
+  have "Q[N <- z] = E[P <- x]"
+    using \<open>M = Pred Q\<close> \<open>M[N <- z] = Pred E[P <- x]\<close>
+    by auto
+  from "5.IH" obtain E' P' where "P'[N <- z] = P" and "E = E'[N <- z]" sorry
+  obtain F where "F = Succ E'" by simp
+  show ?case sorry
+next
+  case (6 z M N)
+  then show ?case sorry
+next
+  case (7 V z M)
+  then show ?case sorry
+next
+  case (8 z M x N)
+  then show ?case sorry
+next
+  case (9 z M N P)
+  then show ?case sorry
+qed
 
 lemma b3: "M[N <- z] \<rightarrow> P \<Longrightarrow> blocked z M \<or> (\<exists>M'. M \<rightarrow> M' \<and> P = M'[N <- z])"
   sorry
