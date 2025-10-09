@@ -80,7 +80,7 @@ lemma usubst_simps[simp]:
   "f \<noteq> y \<Longrightarrow> f \<notin> FVars_term u \<Longrightarrow> x \<noteq> y \<Longrightarrow> x \<notin> FVars_term u \<Longrightarrow>
    usubst (Fix f x t) u y = Fix f x (usubst t u y)"
   "usubst (Pair t1 t2) u y = Pair (usubst t1 u y) (usubst t2 u y)"
-  "dset xy \<inter> {y} = {} \<Longrightarrow> dset xy \<inter> FVars_term u = {} \<Longrightarrow> dset xy \<inter> FVars_term t1 = {} \<Longrightarrow>
+  "y \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term u = {} \<Longrightarrow> dset xy \<inter> FVars_term t1 = {} \<Longrightarrow>
   usubst (term.Let xy t1 t2) u y = term.Let xy (usubst t1 u y) (usubst t2 u y)"
   unfolding usubst_def using IImsupp_term_fun_upd
   by (subst term.subst; fastforce)+
@@ -288,74 +288,174 @@ inductive typing_semanticsR :: "'var::var valuation \<Rightarrow> 'var typing \<
 inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing set \<Rightarrow> bool" (infix "\<Turnstile>" 10) where
   "\<forall>\<theta>. (\<forall>\<tau>\<in>L. typing_semanticsL \<theta> \<tau>) \<longrightarrow> (\<forall>\<tau>\<in>R. typing_semanticsR \<theta> \<tau>) \<Longrightarrow> L \<Turnstile> R"
 
-inductive blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
+inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
+  "eval_ctx z (Var z)"
+| "eval_ctx z N \<Longrightarrow> z \<notin> FVars_term M \<Longrightarrow> eval_ctx z (App (Fix f x M) N)"
+| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> eval_ctx z (App M N)"
+| "eval_ctx z M \<Longrightarrow> eval_ctx z (Succ M)"
+| "eval_ctx z M \<Longrightarrow> eval_ctx z (Pred M)"
+| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow>eval_ctx z (Pair M N)"
+| "val V \<Longrightarrow> eval_ctx z M ==> eval_ctx z (Pair V M)"
+| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> eval_ctx z (Let x M N)"
+| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> z \<notin> FVars_term P \<Longrightarrow> eval_ctx z (If M N P)"
+
+definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
+  "blocked z M = (\<exists> hole E. (eval_ctx hole E) \<and> (M = E[Var z <- hole]))"
+
+lemma blocked_inductive: 
   "blocked z (Var z)"
-| "blocked z N \<Longrightarrow> blocked z (App (Fix f x M) N)"
-| "blocked z M \<Longrightarrow> blocked z (App M N)"
-| "blocked z M \<Longrightarrow> blocked z (Succ M)"
-| "blocked z M \<Longrightarrow> blocked z (Pred M)"
-| "blocked z M \<Longrightarrow> blocked z (Pair M N)"
-| "val V \<Longrightarrow> blocked z M ==> blocked z (Pair V M)"
-| "blocked z M \<Longrightarrow> blocked z (Let x M N)"
-| "blocked z M \<Longrightarrow> blocked z (If M N P)"
+  "blocked z N \<Longrightarrow> blocked z (App (Fix f x M) N)"
+  "blocked z M \<Longrightarrow> blocked z (App M N)"
+  "blocked z M \<Longrightarrow> blocked z (Succ M)"
+  "blocked z M \<Longrightarrow> blocked z (Pred M)"
+  "blocked z M \<Longrightarrow> blocked z (Pair M N)"
+  "val V \<Longrightarrow> blocked z M \<Longrightarrow> blocked z (Pair V M)"
+  "blocked z M \<Longrightarrow> blocked z (Let xy M N)"
+  "blocked z M \<Longrightarrow> blocked z (If M N P)"
+  apply(simp_all add: blocked_def)
+  using eval_ctx.intros(1) apply fastforce
+  sorry
+(*  subgoal
+proof (erule exE)+
+  fix hole E
+  assume "eval_ctx hole E" and "N = E[Var z <- hole]"
+  obtain hole' E' where "E' = App (Fix f x M) E[Var hole'<-hole]" and "hole' \<notin> FVars_term M"
+  *)
 
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
   "\<exists>N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
 
+thm term.subst
+
+lemma subst_Succ_inversion: 
+  assumes "M[t <- x] = Succ N" and "\<not> blocked x M"
+  obtains N' where "M = Succ N'" and "N = N'[t <- x]"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
+  using eval_ctx.intros(1) apply fastforce
+  done
+
+lemma subst_Pred_inversion: 
+  assumes "M[t <- x] = Pred N" and "\<not> blocked x M"
+  obtains N' where "M = Pred N'" and "N = N'[t <- x]"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
+  using eval_ctx.intros(1) apply fastforce
+  done
+
+lemma subst_App_inversion:
+  assumes "M[t <- x] = App R Q" and "\<not> blocked x M"
+  obtains R' Q' where "M = App R' Q'" and "R'[t <- x] = R" and "Q'[t <- x] = Q"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
+  using eval_ctx.intros(1) apply fastforce
+  done
+
+lemma subst_Pair_inversion:
+  assumes "M[t <- x] = Pair Q1 Q2" and "\<not> blocked x M"
+  obtains Q1' Q2' where "M = Pair Q1' Q2'" and "Q1'[t <- x] = Q1" and "Q2'[t <- x] = Q2"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  done
+
 lemma b2:
-  assumes "blocked x E"
-  shows "M[N <- z] = E[P <- x]
-     \<Longrightarrow> x \<noteq> z
-     \<Longrightarrow> x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N
-     \<Longrightarrow> \<not> (blocked z M)
-     \<Longrightarrow> \<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
-  using \<open>blocked x E\<close>
-proof (induction rule:blocked.induct)
+  assumes "eval_ctx x E"
+    and "M[N <- z] = E[P <- x]"
+    and "x \<noteq> z"
+    and "x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N"
+    and "\<not> (blocked z M)"
+  shows "\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
+  using assms
+proof (induction x E arbitrary: M rule:eval_ctx.induct)
   case (1 x)
   have "M[N <- z] = P" by (simp add: "1.prems"(1))
   obtain F P' where "F = Var x" "P' = M" by simp
   show ?case by (metis "1.prems"(2) \<open>M[N <- z] = P\<close> usubst_simps(5))
 next
   case (2 x E f a Q)
-  thm "2.prems"
-  have "x \<notin> FVars_term Q" sledgehammer sorry
+  (*
+  have "x \<notin> FVars_term Q" sorry
   have "M[N <- z] = App (Fix f a Q) E[P <- x]" sorry
   obtain Q' R where "M = App (Fix f x Q') R" sorry
   have "Q'[N <- a] = Q" and "E[N <- z] = E[P <- x]" sorry
   have "\<not> blocked z R" sorry
   obtain E' P' where "R = E'[P' <- x]" and "E'[N <- z] = E" and "P'[N <- z] = P" sorry
-  obtain F where "F = App (Fix f x Q') E'" sorry 
+  obtain F where "F = App (Fix f x Q') E'" sorry *)
   then show ?case sorry
 next
-  case (3 z M N)
-  then show ?case sorry
+  case (3 x E Q)
+  have "M[N <- z] = App (E[P <- x]) Q" using "3.prems" "3.hyps" by simp
+  then obtain R Q' where "M = App R Q'" and "R[N <- z] = E[P <- x]" and "Q'[N <- z] = Q"
+    using subst_App_inversion 3 by metis
+  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z R"
+    using \<open>M = App R Q'\<close> eval_ctx.intros(3) blocked_def blocked_inductive(3) by blast
+  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]"
+    using "3.IH"[where M = R] 3 by force
+  moreover have "x \<notin> FVars_term Q'"
+    using "3.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App R Q'\<close>
+    by simp
+  moreover have "R = E'[P' <- x]"
+    sorry
+    (*
+    R[N <- z] = E[P <- x] = E'[N <- z][P'[N <- z] <- z] = E'[P' <- z][N <- z]
+    \<Longrightarrow> R = E'[P' <- z] maybe?
+    (but maybe the last step requires proving b2?)
+    *)
+  ultimately have "M = (App E' Q')[P' <- x] \<and> App E Q = (App E' Q')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>M = App R Q'\<close> \<open>Q'[N <- z] = Q\<close> by simp
+  then show ?case by blast
 next                                                                       
   case (4 x E)
   have "M[N <- z] = Succ(E[P <- x])" by (simp add: "4.prems"(1))
-  then obtain Q where "M = Succ Q" sorry
-  from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
-    using \<open>M = Succ Q\<close> blocked.intros(4) by auto
-  have "Q[N <- z] = E[P <- x]"
-    using \<open>M = Succ Q\<close> \<open>M[N <- z] = Succ E[P <- x]\<close>
-    by auto
-  from "4.IH" obtain E' P' where "P'[N <- z] = P" and "E = E'[N <- z]" sorry
-  obtain F where "F = Succ E'" by simp
-  show ?case sorry
+  then obtain Q where "M = Succ Q" and "Q[N <- z] = E[P <- x]" using subst_Succ_inversion 4
+    by metis
+  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
+    using \<open>M = Succ Q\<close> eval_ctx.intros(4) blocked_def by (metis usubst_simps(2))
+  ultimately
+  obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]"
+    using "4.IH"[where M = Q] 4(4,5) by auto
+  then have "M = (Succ F')[P' <- x] \<and> Succ E = (Succ F')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>M = Succ Q\<close> by simp
+  then show ?case by blast
 next
   case (5 x E)
   have "M[N <- z] = Pred(E[P <- x])" by (simp add: "5.prems"(1))
-  then obtain Q where "M = Pred Q" sorry
-  from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
-    using \<open>M = Pred Q\<close> blocked.intros(5) by auto
-  have "Q[N <- z] = E[P <- x]"
-    using \<open>M = Pred Q\<close> \<open>M[N <- z] = Pred E[P <- x]\<close>
-    by auto
-  from "5.IH" obtain E' P' where "P'[N <- z] = P" and "E = E'[N <- z]" sorry
-  obtain F where "F = Succ E'" by simp
-  show ?case sorry
+  then obtain Q where "M = Pred Q" and "Q[N <- z] = E[P <- x]" using subst_Pred_inversion 5
+    by metis
+  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
+    using \<open>M = Pred Q\<close> eval_ctx.intros(5) blocked_def by (metis usubst_simps(3))
+  ultimately
+  obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]"
+    using "5.IH"[where M = Q] 5(4,5) by auto
+  then have "M = (Pred F')[P' <- x] \<and> Pred E = (Pred F')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>M = Pred Q\<close> by simp
+  then show ?case by blast
 next
-  case (6 z M N)
-  then show ?case sorry
+  case (6 x E Q)
+  have "M[N <- z] = Pair (E[P <- x]) Q"
+    by (simp add: "6.hyps"(2) "6.prems"(1))
+  then obtain Q1 Q2 where "M = Pair Q1 Q2" and "E[P <- x] = Q1[N <- z]" and "Q = Q2[N <- z]"
+    using subst_Pair_inversion "6.prems"(4) by metis
+  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q1" 
+    using blocked_inductive \<open>M = Pair Q1 Q2\<close> by metis
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P"
+    using "6.IH"[where M = Q] 6 by fastforce
+   moreover have "x \<notin> FVars_term Q2"
+    using "6.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair Q1 Q2\<close>
+    by simp
+  moreover have "Q1 = E'[P' <- x]"
+    sorry
+  ultimately have "M = (Pair E' Q2)[P' <- x] \<and> Pair E Q = (Pair E' Q2)[N <- z] \<and> P = P'[N <- z]"
+    by (simp add: \<open>M = term.Pair Q1 Q2\<close> \<open>Q = Q2[N <- z]\<close>)
+  then show ?case by blast
 next
   case (7 V z M)
   then show ?case sorry
