@@ -366,6 +366,11 @@ lemma subst_Pair_inversion:
   apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
   done
 
+lemma subst_eq_inversion:
+  "M[t <- x] = N[t <- x] \<Longrightarrow> M = N"
+  apply(binder_induction M rule:term.strong_induct)
+  sorry
+
 lemma b2:
   assumes "eval_ctx x E"
     and "M[N <- z] = E[P <- x]"
