@@ -299,8 +299,19 @@ inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 | "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> eval_ctx z (Let x M N)"
 | "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> z \<notin> FVars_term P \<Longrightarrow> eval_ctx z (If M N P)"
 
+binder_inductive (no_auto_equiv) eval_ctx
+  sorry
+
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
   "blocked z M = (\<exists> hole E. (eval_ctx hole E) \<and> (M = E[Var z <- hole]))"
+
+lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> eval_ctx y E[Var y <- x]"
+  apply(binder_induction x E avoiding: y rule:eval_ctx.induct)
+  apply(auto simp add:eval_ctx.intros)
+  sorry
+
+lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> E[Var y <- x][Var z <- y] = E[Var z <- x]"
+  sorry
 
 lemma blocked_inductive: 
   "blocked z (Var z)"
@@ -314,13 +325,26 @@ lemma blocked_inductive:
   "blocked z M \<Longrightarrow> blocked z (If M N P)"
   apply(simp_all add: blocked_def)
   using eval_ctx.intros(1) apply fastforce
-  sorry
-(*  subgoal
+  subgoal
 proof (erule exE)+
   fix hole E
-  assume "eval_ctx hole E" and "N = E[Var z <- hole]"
-  obtain hole' E' where "E' = App (Fix f x M) E[Var hole'<-hole]" and "hole' \<notin> FVars_term M"
-  *)
+  assume "eval_ctx hole E \<and> N = E[Var z <- hole]"
+  then have "eval_ctx hole E" and "N = E[Var z <- hole]" by auto
+  moreover obtain hole' where "hole' \<notin> FVars_term (App M E)"
+    using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="App M E"]
+    by auto
+  moreover obtain E' where "E' = App (Fix f x M) E[Var hole'<-hole]" by simp
+  ultimately have "eval_ctx hole' E'" using eval_subst[of hole E hole'] eval_ctx.intros
+    by (metis Un_iff term.set(6))
+  have "App (Fix f x M) N = E'[Var z <- hole']" 
+    using subst_subst \<open>E' = App (Fix f x M) E[Var hole' <- hole]\<close> \<open>N = E[Var z <- hole]\<close>
+      \<open>eval_ctx hole E\<close> \<open>hole' \<notin> FVars_term (App M E)\<close> 
+    by fastforce
+  show "\<exists>hole' E'. eval_ctx hole' E' \<and> App (Fix f x M) N = E'[Var z <- hole']"
+    using \<open>eval_ctx hole' E'\<close> \<open>App (Fix f x M) N = E'[Var z <- hole']\<close>
+    by auto
+qed
+  sorry
 
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
   "\<exists>N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
