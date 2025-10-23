@@ -114,14 +114,14 @@ inductive stuck :: "'var::var term \<Rightarrow> bool" where
 | "stuck M \<Longrightarrow> stuck (If M N P)"
 
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
-  "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
-| "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
-| "M \<rightarrow> M' \<Longrightarrow> Succ M \<rightarrow> Succ M'"
-| "M \<rightarrow> M' \<Longrightarrow> Pred M \<rightarrow> Pred M'"
-| "M \<rightarrow> M' \<Longrightarrow> Pair M N \<rightarrow> Pair M' N"
-| "val V \<Longrightarrow> N \<rightarrow> N' \<Longrightarrow> Pair V N \<rightarrow> Pair V N'"
-| "M \<rightarrow> M' \<Longrightarrow> Let xy M N \<rightarrow> Let xy M' N"
-| "M \<rightarrow> M' \<Longrightarrow> If M N P \<rightarrow> If M' N P"
+  OrdApp2: "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
+| OrdApp1: "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
+| OrdSucc: "M \<rightarrow> M' \<Longrightarrow> Succ M \<rightarrow> Succ M'"
+| OrdPred: "M \<rightarrow> M' \<Longrightarrow> Pred M \<rightarrow> Pred M'"
+| OrdPair1: "M \<rightarrow> M' \<Longrightarrow> Pair M N \<rightarrow> Pair M' N"
+| OrdPair2: "val V \<Longrightarrow> N \<rightarrow> N' \<Longrightarrow> Pair V N \<rightarrow> Pair V N'"
+| OrdLet: "M \<rightarrow> M' \<Longrightarrow> Let xy M N \<rightarrow> Let xy M' N"
+| OrdIf: "M \<rightarrow> M' \<Longrightarrow> If M N P \<rightarrow> If M' N P"
 | Ifz : "If Zero N P \<rightarrow> N"
 | Ifs : "If (Succ n) N P \<rightarrow> P"
 | Let : "Let xy (Pair V W) M \<rightarrow> M[V <- dfst xy][W <- dsnd xy]"
@@ -289,15 +289,15 @@ inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing 
   "\<forall>\<theta>. (\<forall>\<tau>\<in>L. typing_semanticsL \<theta> \<tau>) \<longrightarrow> (\<forall>\<tau>\<in>R. typing_semanticsR \<theta> \<tau>) \<Longrightarrow> L \<Turnstile> R"
 
 inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
-  "eval_ctx z (Var z)"
-| "eval_ctx z N \<Longrightarrow> z \<notin> FVars_term M \<Longrightarrow> eval_ctx z (App (Fix f x M) N)"
-| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> eval_ctx z (App M N)"
-| "eval_ctx z M \<Longrightarrow> eval_ctx z (Succ M)"
-| "eval_ctx z M \<Longrightarrow> eval_ctx z (Pred M)"
-| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow>eval_ctx z (Pair M N)"
-| "val V \<Longrightarrow> eval_ctx z M ==> eval_ctx z (Pair V M)"
-| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> eval_ctx z (Let x M N)"
-| "eval_ctx z M \<Longrightarrow> z \<notin> FVars_term N \<Longrightarrow> z \<notin> FVars_term P \<Longrightarrow> eval_ctx z (If M N P)"
+  "eval_ctx hole (Var hole)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term M \<Longrightarrow> eval_ctx hole (App (Fix f x M) E)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (App E N)"
+| "eval_ctx hole E \<Longrightarrow> eval_ctx hole (Succ E)"
+| "eval_ctx hole E \<Longrightarrow> eval_ctx hole (Pred E)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow>eval_ctx hole (Pair E N)"
+| "val V \<Longrightarrow> eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term V \<Longrightarrow> eval_ctx hole (Pair V E)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (Let x E N)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> hole \<notin> FVars_term P \<Longrightarrow> eval_ctx hole (If E N P)"
 
 binder_inductive (no_auto_equiv) eval_ctx
   sorry
@@ -390,10 +390,14 @@ lemma subst_Pair_inversion:
   apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
   done
 
-lemma subst_eq_inversion:
-  "M[t <- x] = N[t <- x] \<Longrightarrow> M = N"
-  apply(binder_induction M rule:term.strong_induct)
-  sorry
+lemma subst_If_inversion:
+  assumes "M[t <- x] = If Q0 Q1 Q2" and "\<not> blocked x M"
+  obtains Q0' Q1' Q2' where "M = If Q0' Q1' Q2'" and "Q0'[t <- x] = Q0" and "Q1'[t <- x] = Q1" and "Q2'[t <- x] = Q2"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  done
 
 lemma b2:
   assumes "eval_ctx x E"
@@ -426,18 +430,11 @@ next
     using subst_App_inversion 3 by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z R"
     using \<open>M = App R Q'\<close> eval_ctx.intros(3) blocked_def blocked_inductive(3) by blast
-  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]"
+  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- x]"
     using "3.IH"[where M = R] 3 by force
   moreover have "x \<notin> FVars_term Q'"
     using "3.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App R Q'\<close>
     by simp
-  moreover have "R = E'[P' <- x]"
-    sorry
-    (*
-    R[N <- z] = E[P <- x] = E'[N <- z][P'[N <- z] <- z] = E'[P' <- z][N <- z]
-    \<Longrightarrow> R = E'[P' <- z] maybe?
-    (but maybe the last step requires proving b2?)
-    *)
   ultimately have "M = (App E' Q')[P' <- x] \<and> App E Q = (App E' Q')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = App R Q'\<close> \<open>Q'[N <- z] = Q\<close> by simp
   then show ?case by blast
@@ -475,24 +472,130 @@ next
     using subst_Pair_inversion "6.prems"(4) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q1" 
     using blocked_inductive \<open>M = Pair Q1 Q2\<close> by metis
-  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P"
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q1 = E'[P' <- x]"
     using "6.IH"[where M = Q] 6 by fastforce
    moreover have "x \<notin> FVars_term Q2"
     using "6.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair Q1 Q2\<close>
     by simp
-  moreover have "Q1 = E'[P' <- x]"
-    sorry
   ultimately have "M = (Pair E' Q2)[P' <- x] \<and> Pair E Q = (Pair E' Q2)[N <- z] \<and> P = P'[N <- z]"
     by (simp add: \<open>M = term.Pair Q1 Q2\<close> \<open>Q = Q2[N <- z]\<close>)
   then show ?case by blast
 next
-  case (7 V z M)
+  case (7 V x E)
+  have "M[N <- z] = Pair V E[P <- x]"
+    by(simp add:"7.hyps" "7.prems")
+  then obtain V' Q where "M = Pair V' Q" and "V = V'[N <- z]" and "E[P <- x] = Q[N <- z]"
+    using subst_Pair_inversion "7.prems" by metis
+  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
+    using blocked_inductive(7) \<open>M = Pair V' Q\<close> \<open>val V'\<close> sorry
+  (* How can we know that V' is value? It's possible for V to be val while V' not val.
+     For example, consider V = Succ Zero, V' = Succ x, V = V'[Zero <- x]*)
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q = E'[P' <- x]"
+    using "7.IH"[where M = Q] 7 by fastforce
+   moreover have "x \<notin> FVars_term V'"
+    using "7.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair V' Q\<close>
+    by simp
+  ultimately have "M = (Pair V' E')[P' <- x] \<and> Pair V E = (Pair V' E')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>M = term.Pair V' Q\<close> \<open>V = V'[N <- z]\<close> \<open>Q = E'[P' <- x]\<close> by simp
+  then show ?case by blast
+next
+  case (8 hole E Q x M)
+  show ?case sorry
+next
+  case (9 x E Q1 Q2)
+  have "M[N <- z] = If E[P <- x] Q1 Q2"
+    by(simp add:"9.hyps" "9.prems")
+  then obtain Q0 Q1' Q2' where "M = If Q0 Q1' Q2'" and "E[P <- x] = Q0[N <- z]" and "Q1 = Q1'[N <- z]" and "Q2 = Q2'[N <- z]"
+    using subst_If_inversion "9.prems" by metis
+  thm "9.IH"[where M = Q0]
+  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q0"
+    using blocked_inductive(9) \<open>M = If Q0 Q1' Q2'\<close> by auto
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q0 = E'[P' <- x]"
+    using "9.IH"[where M = Q0] 9 by fastforce
+  moreover have "x \<notin> FVars_term Q1'" and "x \<notin> FVars_term Q2'"
+    using "9.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = If Q0 Q1' Q2'\<close>
+    by auto
+  ultimately have "M = (If E' Q1' Q2')[P' <- x] \<and> (If E Q1 Q2) = (If E' Q1' Q2')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>M = If Q0 Q1' Q2'\<close> \<open>Q1 = Q1'[N <- z]\<close> \<open>Q2 = Q2'[N <- z]\<close> \<open>Q0 = E'[P' <- x]\<close> by simp
+  then show ?case by blast
+qed
+
+thm beta.cases
+
+lemma b3_1: 
+  assumes "eval_ctx x E" and "M[N <- z] = E[P1 <- x]" and "P1 \<rightarrow> P2" and "\<not> blocked z M"
+  shows "\<exists>M'. M \<rightarrow> M' \<and> M'[N <- z] = E[P2 <- x]"
+  using assms
+proof (induction x E arbitrary: M rule:eval_ctx.induct)
+  case (1 hole)
+  show ?case
+  using "1.prems"(2)
+  proof (cases P1 P2 rule:beta.cases)
+    case (OrdApp2 N N' f x M)
+    then show ?thesis sorry
+  next
+    case (OrdApp1 M M' N)
+    then show ?thesis sorry
+  next
+    case (OrdSucc M M')
+    then show ?thesis sorry
+  next
+    case (OrdPred M M')
+    then show ?thesis sorry
+  next
+    case (OrdPair1 M M' N)
+    then show ?thesis sorry
+  next
+    case (OrdPair2 V N N')
+    then show ?thesis sorry
+  next
+    case (OrdLet M M' xy N)
+    then show ?thesis sorry
+  next
+    case (OrdIf M M' N P)
+    then show ?thesis sorry
+  next
+    case (Ifz P)
+    then show ?thesis sorry
+  next
+    case (Ifs n N)
+    then show ?thesis sorry
+  next
+    case (Let xy V W M)
+    then show ?thesis sorry
+  next
+    case PredZ
+    then show ?thesis sorry
+  next
+    case PredS
+    then show ?thesis sorry
+  next
+    case (FixBeta f x M V)
+    then show ?thesis sorry
+  qed
+next
+  case (2 hole E M f x)
   then show ?case sorry
 next
-  case (8 z M x N)
+  case (3 hole E N)
   then show ?case sorry
 next
-  case (9 z M N P)
+  case (4 hole E)
+  then show ?case sorry
+next
+  case (5 hole E)
+  then show ?case sorry
+next
+  case (6 hole E N)
+  then show ?case sorry
+next
+  case (7 V hole E)
+  then show ?case sorry
+next
+  case (8 hole E N x)
+  then show ?case sorry
+next
+  case (9 hole E N P)
   then show ?case sorry
 qed
 
