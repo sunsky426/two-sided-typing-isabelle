@@ -346,6 +346,9 @@ proof (erule exE)+
 qed
   sorry
 
+inductive normal :: "'var::var term \<Rightarrow> bool" where
+  "\<not>(\<exists>N'. N \<rightarrow> N') \<Longrightarrow> normal N"
+
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
   "\<exists>N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
 
@@ -801,4 +804,23 @@ proof -
   then show ?thesis by blast
 qed
 
+lemma b4:
+  assumes "M[N <- x] \<rightarrow>* P" and "normal P" and "N \<greatersim> Q"
+  shows "diverge M[Q <- x] \<or> (\<exists>M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>* M'[Q <- x])"
+  sorry
+
+inductive b5_prop :: "'var::var term \<Rightarrow> bool" where
+  "(V \<noteq> Fix _ _ _ \<Longrightarrow> W = V) \<Longrightarrow> b5_prop W" (* no correct, should be if V has Fix _ _ _ as subterm. Is there is subterm predicate defined?*)
+| "(V = Pair V1 V2 \<Longrightarrow> W = Pair W1[P <- z] W2[P <- z] \<and> W1[N <- z] = V1 \<and> W2[N <- z] = V2) \<Longrightarrow> b5_prop W"
+| "(V = Fix f x P \<Longrightarrow> W = Fix f x Q[P <- z] \<and> Q[N <- z] = P) \<Longrightarrow> b5_prop W"
+
+lemma b5:
+  assumes "M[N <- z] = V" and "val V" and "N \<greatersim> P"
+  shows "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>* W \<and> b5_prop W)"
+  sorry
+
+lemma b6:
+  assumes "stuck M[N <- z]" and "N \<greatersim> P"
+  shows "diverge M[P <- z] \<or> stuck M[P <- z]"
+  sorry
 end
