@@ -123,7 +123,7 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | OrdLet: "M \<rightarrow> M' \<Longrightarrow> Let xy M N \<rightarrow> Let xy M' N"
 | OrdIf: "M \<rightarrow> M' \<Longrightarrow> If M N P \<rightarrow> If M' N P"
 | Ifz : "If Zero N P \<rightarrow> N"
-| Ifs : "If (Succ n) N P \<rightarrow> P"
+| Ifs : "num n \<Longrightarrow> If (Succ n) N P \<rightarrow> P"
 | Let : "Let xy (Pair V W) M \<rightarrow> M[V <- dfst xy][W <- dsnd xy]"
 | PredZ: "Pred Zero \<rightarrow> Zero"
 | PredS: "Pred (Succ n) \<rightarrow> n"
@@ -351,14 +351,31 @@ inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> 
 
 thm term.subst
 
+lemma subst_Zero_inversion:
+  assumes "M[t <- x] = Zero" and "\<not> blocked x M"
+  shows "M = Zero"
+  using assms
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
+  using eval_ctx.intros(1) apply fastforce
+  done
+
+lemma subst_Var_inversion:
+  assumes "M[t <- x] = Var y" and "\<not> blocked x M"
+  shows "M = Var z"
+  using assms
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:eval_ctx.intros blocked_inductive Int_Un_distrib split:if_splits)
+  using eval_ctx.intros(1)
+  sorry
+
 lemma subst_Succ_inversion: 
   assumes "M[t <- x] = Succ N" and "\<not> blocked x M"
   obtains N' where "M = Succ N'" and "N = N'[t <- x]"
   using assms
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
-  using eval_ctx.intros(1) apply fastforce
+  apply(auto simp add:eval_ctx.intros blocked_inductive Int_Un_distrib split:if_splits)
   done
 
 lemma subst_Pred_inversion: 
@@ -392,12 +409,75 @@ lemma subst_Pair_inversion:
 
 lemma subst_If_inversion:
   assumes "M[t <- x] = If Q0 Q1 Q2" and "\<not> blocked x M"
-  obtains Q0' Q1' Q2' where "M = If Q0' Q1' Q2'" and "Q0'[t <- x] = Q0" and "Q1'[t <- x] = Q1" and "Q2'[t <- x] = Q2"
+  obtains Q0' Q1' Q2'
+  where "M = If Q0' Q1' Q2'" and "Q0'[t <- x] = Q0" and "Q1'[t <- x] = Q1" and "Q2'[t <- x] = Q2"
   using assms
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
   apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
   done
+
+lemma subst_Fix_inversion:
+  assumes "M[t <- x] = Fix f z Q" and "\<not> blocked x M"
+  obtains Q' where "M = Fix f z Q'" and "Q'[t <- x] = Q"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  sorry
+
+lemma subst_Let_inversion:
+assumes "M[t <- x] = Let xy P Q" and "\<not> blocked x M"
+  obtains P' Q' where "M = Let xy P' Q'" and "P'[t <- x] = P" and "Q'[t <- x] = Q"
+  using assms
+  apply(atomize_elim)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  sorry
+
+lemma subst_num_inversion: "num m \<Longrightarrow> \<not> blocked z n \<Longrightarrow> n[N <- z] = m \<Longrightarrow> n = m"
+proof (induction arbitrary: n rule:num.induct)
+  case 1
+  then show ?case using subst_Zero_inversion by auto
+next
+  case (2 m')
+  obtain n' where "n = Succ n'" and "n'[N <- z] = m'" and "\<not> blocked z n'"
+    using subst_Succ_inversion
+    by (metis "2.prems"(1,2) blocked_inductive(4))
+  then have "n' = m'" using "2.IH"[of n'] by auto 
+  then show ?case
+    by (simp add: \<open>n = Succ n'\<close>)
+qed
+
+lemma subst_val_inversion:
+  assumes "val V" and "\<not> blocked z V'" and "V'[N <- z] = V"
+  shows "val V'"
+  using assms
+proof(induction V arbitrary: V' rule:val.induct)
+  case (1 x)
+  then obtain y where "V' = Var y" using subst_Var_inversion by blast
+  then show ?case using val.intros by auto
+next
+  case (2 n)
+  then show ?case using subst_num_inversion
+    by (metis val.simps)
+next
+  case (3 V1 V2)
+  obtain V1' V2' where "V' = Pair V1' V2'" and "V1'[N <- z] = V1" and "V2'[N <- z] = V2"
+    using \<open>\<not> blocked z V'\<close>  subst_Pair_inversion "3.prems" by blast
+  then have "\<not> blocked z V1'"
+    using blocked_inductive \<open>\<not> blocked z V'\<close> by metis
+  then have "val V1'" using \<open>V1'[N <- z] = V1\<close> "3.IH"(1)[of V1'] by auto
+  then have "\<not> blocked z V2'"
+    using blocked_inductive \<open>\<not> blocked z V'\<close> \<open>V' = term.Pair V1' V2'\<close> by metis
+  then have "val V2'" using \<open>V2'[N <- z] = V2\<close> "3.IH"(2)[of V2'] by auto
+  show ?case using \<open>val V1'\<close> \<open>val V2'\<close> \<open>V' = Pair V1' V2'\<close> val.intros by auto
+next
+  case (4 f x M)
+  then obtain M' where "V' = Fix f x M'" and "M'[N <- z] = M"
+    using subst_Fix_inversion[of V' N z f x M] by auto
+  then show ?case using val.intros by auto
+qed
 
 lemma b2:
   assumes "eval_ctx x E"
@@ -520,7 +600,7 @@ next
   then show ?case by blast
 qed
 
-thm beta.cases
+thm beta.strong_induct
 
 lemma b3_1: 
   assumes "eval_ctx x E" and "M[N <- z] = E[P1 <- x]" and "P1 \<rightarrow> P2" and "\<not> blocked z M"
@@ -530,7 +610,7 @@ proof (induction x E arbitrary: M rule:eval_ctx.induct)
   case (1 hole)
   show ?case
   using "1.prems"(2)
-  proof (cases P1 P2 rule:beta.cases)
+  proof (cases rule:beta.cases)
     case (OrdApp2 N N' f x M)
     then show ?thesis sorry
   next
@@ -556,50 +636,169 @@ proof (induction x E arbitrary: M rule:eval_ctx.induct)
     then show ?thesis sorry
   next
     case (Ifz P)
-    then show ?thesis sorry
+    obtain Q where "M[N <- z] = If Zero P2 Q"
+      by (simp add: "1.prems"(1) local.Ifz)
+    then obtain Q0 Q1 Q2
+      where "M = If Q0 Q1 Q2" and "Q0[N <- z] = Zero" and "Q1[N <- z] = P2" and "Q2[N <- z] = Q"  and "\<not> blocked z Q0"
+      using  \<open>\<not> blocked z M\<close> subst_If_inversion[of M N z Zero P2 Q] blocked_inductive by metis
+    then have "Q0 = Zero"
+      using subst_Zero_inversion by blast
+    then show ?thesis
+      using \<open>M = term.If Q0 Q1 Q2\<close> \<open>Q1[N <- z] = P2\<close> beta.Ifz by auto
   next
-    case (Ifs n N)
-    then show ?thesis sorry
+    case (Ifs Q Q1)
+    have "M[N <- z] = If (Succ Q) Q1 P2"
+      by (simp add: "1.prems"(1) local.Ifs)
+    then obtain Q0' Q1' Q2'
+      where "M = If Q0' Q1' Q2'" and "Q0'[N <- z] = (Succ Q)" and "Q1'[N <- z] = Q1" and "Q2'[N <- z] = P2"  and "\<not> blocked z Q0'"
+      using  \<open>\<not> blocked z M\<close> subst_If_inversion[of M N z "Succ Q" Q1 P2] blocked_inductive by metis
+    then have "Q0' = Succ Q"
+       using local.Ifs(2) num.intros(2) subst_num_inversion by blast
+     then show ?thesis
+      using \<open>M = term.If Q0' Q1' Q2'\<close> \<open>Q2'[N <- z] = P2\<close> beta.Ifs local.Ifs(2) by auto
   next
-    case (Let xy V W M)
-    then show ?thesis sorry
+    case (Let xy V W Q)
+    have "M[N <- z] = Let xy (Pair V W) Q"
+      by (simp add: "1.prems"(1) local.Let(1))
+    then obtain P' Q' where "M = Let xy P' Q'" and "P'[N <- z] = Pair V W" and "Q'[N <- z] = Q" and "\<not> blocked z P'"
+      using \<open>\<not> blocked z M\<close> subst_Let_inversion[of M N z xy "Pair V W" Q] blocked_inductive by metis
+    then obtain V' W' where "P' = Pair V' W'" and "V'[N <- z] = V" and "W' [N <- z] = W"
+      using subst_Pair_inversion by blast
+    have "(Q'[V' <- dfst xy][W' <- dsnd xy])[N <- z] = P2"
+      using \<open>P2 = Q[V <- dfst xy][W <- dsnd xy]\<close> usubst_usubst
+      sorry
+    then show ?thesis
+      by (metis \<open>M = term.Let xy P' Q'\<close> \<open>P' = term.Pair V' W'\<close> beta.Let
+          usubst_simps(5))
   next
     case PredZ
-    then show ?thesis sorry
+    have "M[N <- z] = Pred Zero"
+      by (simp add: "1.prems"(1) local.PredZ(1))
+    then obtain Q where "M = Pred Q" and "\<not> blocked z Q" and "Q[N <- z] = Zero" using subst_Pred_inversion
+      by (metis "1.prems"(3) blocked_inductive(5))
+    then have "Q = Zero" using \<open>Q[N <- z] = Zero\<close> \<open>\<not> blocked z Q\<close> subst_Zero_inversion by auto
+    have "(Zero)[N <- z] = P2" using \<open>P2 = Zero\<close> by simp
+    then show ?thesis
+      using \<open>M = Pred Q\<close> \<open>Q = Zero\<close> assms(3) local.PredZ(1) by auto
   next
     case PredS
-    then show ?thesis sorry
+    have "M[N <- z] = Pred (Succ P2)"
+      by (simp add: "1.prems"(1) local.PredS(1))
+    then obtain Q where "M = Pred Q" and "\<not> blocked z Q" and "Q[N <- z] = Succ P2" using subst_Pred_inversion
+      by (metis "1.prems"(3) blocked_inductive(5))
+    then obtain Q' where "Q = Succ Q'" and "Q'[N <- z] = P2"
+      using subst_Succ_inversion by blast
+    then show ?thesis
+      using \<open>M = Pred Q\<close> beta.PredS by auto
   next
-    case (FixBeta f x M V)
-    then show ?thesis sorry
+    case (FixBeta f x Q V)
+    have "M[N <- z] = App (Fix f x Q) V"
+      by (simp add: "1.prems"(1) local.FixBeta)
+    then obtain Q' V' where "M = App (Fix f x Q') V'" and "Q'[N <- z] = Q" and "V'[N <- z] = V"
+      using  \<open>\<not> blocked z M\<close> subst_Fix_inversion subst_App_inversion
+      by (metis blocked_inductive(3))
+    let ?M' = "Q'[V' <- x][Fix f x Q' <- f]"
+    have "?M'[N <- z] = P2" 
+      using \<open>P2 = Q[V <- x][Fix f x Q <- f]\<close> usubst_usubst[of f z N "Q[V' <- x]" "Fix f x Q"]
+      sorry
+    then show ?thesis
+      by (metis \<open>M = App (Fix f x Q') V'\<close> beta.FixBeta usubst_simps(5))
   qed
 next
   case (2 hole E M f x)
   then show ?case sorry
 next
-  case (3 hole E N)
-  then show ?case sorry
+  case (3 hole E Q)
+  then have "M[N <- z] = App E[P1 <- hole] Q"
+    by (metis subst_idle usubst_simps(6))
+  then obtain R Q' where "M = App R Q'" and "R[N <- z] = E[P1 <- hole]" and "Q'[N <- z] = Q"
+    using \<open>\<not> blocked z M\<close> subst_App_inversion by blast
+  then have "\<not> blocked z R" using blocked_inductive \<open>\<not> blocked z M\<close> by blast
+  then obtain R' where "R \<rightarrow> R'" and "R'[N <- z] = E[P2 <- hole]" 
+    using \<open>P1 \<rightarrow> P2\<close> "3.IH"[of R] \<open>R[N <- z] = E[P1 <- hole]\<close> by auto
+  have "(App R' Q')[N <- z] = (App E Q)[P2 <- hole]"
+    by (simp add: "3.hyps"(2) \<open>Q'[N <- z] = Q\<close> \<open>R'[N <- z] = E[P2 <- hole]\<close>)
+  then show ?case
+    using OrdApp1 \<open>M = App R Q'\<close> \<open>R \<rightarrow> R'\<close> by blast
 next
   case (4 hole E)
-  then show ?case sorry
+  obtain Q where "M = Succ Q" and "Q[N <- z] = E[P1 <- hole]"
+    using \<open>M[N <- z] = (Succ E)[P1 <- hole]\<close> \<open>\<not> blocked z M\<close> subst_Succ_inversion by force
+  moreover have "\<not> blocked z Q" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Succ Q\<close> by blast
+  ultimately obtain Q' where "Q \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]" 
+    using \<open>P1 \<rightarrow> P2\<close> "4.IH"[of Q] by auto
+  have "(Succ Q')[N <- z] = (Succ E)[P2 <- hole]"
+    by (simp add: \<open>Q'[N <- z] = E[P2 <- hole]\<close>)
+  then show ?case
+    using OrdSucc \<open>M = Succ Q\<close> \<open>Q \<rightarrow> Q'\<close> by blast
 next
   case (5 hole E)
-  then show ?case sorry
+  obtain Q where "M = Pred Q" and "Q[N <- z] = E[P1 <- hole]"
+    using \<open>M[N <- z] = (Pred E)[P1 <- hole]\<close> \<open>\<not> blocked z M\<close> subst_Pred_inversion by force
+  moreover have "\<not> blocked z Q" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Pred Q\<close> by blast
+  ultimately obtain Q' where "Q \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]" 
+    using \<open>P1 \<rightarrow> P2\<close> "5.IH"[of Q] by auto
+  have "(Pred Q')[N <- z] = (Pred E)[P2 <- hole]"
+    by (simp add: \<open>Q'[N <- z] = E[P2 <- hole]\<close>)
+  then show ?case
+    using OrdPred \<open>M = Pred Q\<close> \<open>Q \<rightarrow> Q'\<close> by blast
 next
-  case (6 hole E N)
-  then show ?case sorry
+  case (6 hole E Q2)
+  have "M[N <- z] = (Pair E[P1 <- hole] Q2)"
+    by (simp add: "6.hyps"(2) "6.prems"(1))
+  then obtain Q1' Q2' where "M = Pair Q1' Q2'" and "Q1'[N <- z] = E[P1 <- hole]" and "Q2'[N <- z] = Q2"
+    using \<open>\<not> blocked z M\<close> subst_Pair_inversion by blast
+  moreover have "\<not> blocked z Q1'" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Pair Q1' Q2'\<close> by metis
+  ultimately obtain Q' where "Q1' \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]" 
+    using \<open>P1 \<rightarrow> P2\<close> "6.IH"[of Q1'] by blast
+  have "(Pair Q' Q2')[N <- z] = (Pair E Q2)[P2 <- hole]"
+    by (simp add: "6.hyps"(2) \<open>Q'[N <- z] = E[P2 <- hole]\<close> \<open>Q2'[N <- z] = Q2\<close>)
+  then show ?case
+    using OrdPair1 \<open>M = term.Pair Q1' Q2'\<close> \<open>Q1' \<rightarrow> Q'\<close> by blast
 next
   case (7 V hole E)
+  have "M[N <- z] = (Pair V E[P1 <- hole])"
+    by (simp add: "7.hyps" "7.prems")
+  then obtain V' Q where "M = Pair V' Q" and "V'[N <- z] = V" and "Q[N <- z] = E[P1 <- hole]"
+    using \<open>\<not> blocked z M\<close> subst_Pair_inversion[of M N z V "E[P1 <- hole]"] by auto
+  then have "val V'" using "7.hyps"(1) \<open>\<not> blocked z M\<close> blocked_inductive subst_val_inversion
+    by metis
+  then have "\<not> blocked z Q" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Pair V' Q\<close> by metis
+  then obtain Q' where "Q \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]"
+    using \<open>P1 \<rightarrow> P2\<close> \<open>Q[N <- z] = E[P1 <- hole]\<close> "7.IH"[of Q] by blast
+  have "(Pair V' Q')[N <- z] = (Pair V E)[P2 <- hole]"
+    using \<open>Q'[N <- z] = E[P2 <- hole]\<close> \<open>V'[N <- z] = V\<close> by (simp add: "7.hyps"(3))
+  then show ?case
+    using OrdPair2 \<open>M = term.Pair V' Q\<close> \<open>Q \<rightarrow> Q'\<close> \<open>val V'\<close> by blast
+next
+  case (8 hole E Q xy)
   then show ?case sorry
 next
-  case (8 hole E N x)
-  then show ?case sorry
-next
-  case (9 hole E N P)
-  then show ?case sorry
+  case (9 hole E Q1 Q2)
+  have "M[N <- z] = (If E[P1 <- hole] Q1 Q2)"
+    by (simp add: "9.hyps" "9.prems")
+  then obtain Q0' Q1' Q2' 
+    where "M = If Q0' Q1' Q2'" and "Q0'[N <- z] = E[P1 <- hole]" and "Q1'[N <- z] = Q1" and "Q2'[N <- z] = Q2"
+    using \<open>\<not> blocked z M\<close> subst_If_inversion[of M N z "E[P1 <- hole]" Q1 Q2] by auto
+  then have "\<not> blocked z Q0'" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = If Q0' Q1' Q2'\<close> by metis
+  then obtain Q where "Q0' \<rightarrow> Q" and "Q[N <- z] = E[P2 <- hole]"
+    using \<open>P1 \<rightarrow> P2\<close> \<open>Q0'[N <- z] = E[P1 <- hole]\<close> "9.IH"[of Q0'] by blast
+  have "(If Q Q1' Q2')[N <- z] = (If E Q1 Q2)[P2 <- hole]"
+    using \<open>Q[N <- z] = E[P2 <- hole]\<close> \<open>Q1'[N <- z] = Q1\<close> \<open>Q2'[N <- z] = Q2\<close> by (simp add: "9.hyps")
+  then show ?case
+    using OrdIf \<open>M = term.If Q0' Q1' Q2'\<close> \<open>Q0' \<rightarrow> Q\<close> by blast
 qed
 
+thm b3_1
+
 lemma b3: "M[N <- z] \<rightarrow> P \<Longrightarrow> blocked z M \<or> (\<exists>M'. M \<rightarrow> M' \<and> P = M'[N <- z])"
-  sorry
+proof -
+  assume "M[N <- z] \<rightarrow> P"
+  obtain E :: "'a term" and x :: 'a where "eval_ctx x E" and "E = Var x"
+    by (simp add: eval_ctx.intros(1))
+  then have "\<not> blocked z M \<Longrightarrow> (\<exists>M'. M \<rightarrow> M' \<and> P = M'[N <- z])" 
+    using b3_1[of x E M N z "M[N <- z]" P] \<open>M[N <- z] \<rightarrow> P\<close> by auto
+  then show ?thesis by blast
+qed
 
 end
