@@ -1,5 +1,5 @@
 theory MrBNF_ver
-  imports Binders.MRBNF_Recursor "Case_Studies.FixedCountableVars"
+  imports Binders.MRBNF_Recursor "Case_Studies.FixedCountableVars" "Nominal2.Nominal2"
 begin
 
 datatype "type" = 
@@ -306,7 +306,7 @@ definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
   "blocked z M = (\<exists> hole E. (eval_ctx hole E) \<and> (M = E[Var z <- hole]))"
 
 lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> eval_ctx y E[Var y <- x]"
-  apply(binder_induction x E avoiding: y rule:eval_ctx.induct)
+  apply(binder_induction x E avoiding: y rule: eval_ctx.strong_induct)
   apply(auto simp add:eval_ctx.intros)
   sorry
 
@@ -489,14 +489,25 @@ lemma b2:
     and "x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N"
     and "\<not> (blocked z M)"
   shows "\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
-  using assms
-proof (induction x E arbitrary: M rule:eval_ctx.induct)
-  case (1 x)
-  have "M[N <- z] = P" by (simp add: "1.prems"(1))
-  obtain F P' where "F = Var x" "P' = M" by simp
-  show ?case by (metis "1.prems"(2) \<open>M[N <- z] = P\<close> usubst_simps(5))
+proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
+    p = (z, N, M, E, x, P) \<longrightarrow> M[N <- z] = E[P <- x] \<longrightarrow>
+    x \<noteq> z \<longrightarrow>
+    x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N \<longrightarrow>
+    \<not> blocked z M \<longrightarrow> (\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z])"
+    and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P",
+    rule_format, rotated -5, of "(z, N, M, E, x, P)" M E x, OF _ assms(2,3,4,5,1),
+    simplified prod.inject simp_thms True_implies_equals], goal_cases card 1 2 3 4 5 6 7 8 9)
+  case (card p)
+  then show ?case
+    unfolding split_beta
+    by (intro ordLess_ordLeq_trans[OF term.set_bd var_class.large'] Un_bound infinite_UNIV) simp
 next
-  case (2 x E f a Q)
+  case (1 x p M)
+  have "M[N <- z] = P" by (simp add: 1(2))
+  obtain F P' where "F = Var x" "P' = M" by simp
+  show ?case by (metis 1(3) \<open>M[N <- z] = P\<close> usubst_simps(5))
+next
+  case (2 x E M f a Q p)
   (*
   have "x \<notin> FVars_term Q" sorry
   have "M[N <- z] = App (Fix f a Q) E[P <- x]" sorry
@@ -507,96 +518,95 @@ next
   obtain F where "F = App (Fix f x Q') E'" sorry *)
   then show ?case sorry
 next
-  case (3 x E Q)
-  have "M[N <- z] = App (E[P <- x]) Q" using "3.prems" "3.hyps" by simp
+  case (3 x E Q p M)
+  have "M[N <- z] = App (E[P <- x]) Q" using 3 by simp
   then obtain R Q' where "M = App R Q'" and "R[N <- z] = E[P <- x]" and "Q'[N <- z] = Q"
     using subst_App_inversion 3 by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z R"
     using \<open>M = App R Q'\<close> eval_ctx.intros(3) blocked_def blocked_inductive(3) by blast
   ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- x]"
-    using "3.IH"[where M = R] 3 by force
+    using 3(2)[where M = R] 3 by force
   moreover have "x \<notin> FVars_term Q'"
-    using "3.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App R Q'\<close>
+    using 3 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App R Q'\<close>
     by simp
   ultimately have "M = (App E' Q')[P' <- x] \<and> App E Q = (App E' Q')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = App R Q'\<close> \<open>Q'[N <- z] = Q\<close> by simp
   then show ?case by blast
 next                                                                       
-  case (4 x E)
-  have "M[N <- z] = Succ(E[P <- x])" by (simp add: "4.prems"(1))
+  case (4 x E p M)
+  have "M[N <- z] = Succ(E[P <- x])" by (simp add: 4)
   then obtain Q where "M = Succ Q" and "Q[N <- z] = E[P <- x]" using subst_Succ_inversion 4
     by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using \<open>M = Succ Q\<close> eval_ctx.intros(4) blocked_def by (metis usubst_simps(2))
   ultimately
   obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]"
-    using "4.IH"[where M = Q] 4(4,5) by auto
+    using 4(2)[where M = Q] 4(1,3-) by auto
   then have "M = (Succ F')[P' <- x] \<and> Succ E = (Succ F')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = Succ Q\<close> by simp
   then show ?case by blast
 next
-  case (5 x E)
-  have "M[N <- z] = Pred(E[P <- x])" by (simp add: "5.prems"(1))
+  case (5 x E p M)
+  have "M[N <- z] = Pred(E[P <- x])" by (simp add: 5)
   then obtain Q where "M = Pred Q" and "Q[N <- z] = E[P <- x]" using subst_Pred_inversion 5
     by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using \<open>M = Pred Q\<close> eval_ctx.intros(5) blocked_def by (metis usubst_simps(3))
   ultimately
   obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]"
-    using "5.IH"[where M = Q] 5(4,5) by auto
+    using 5(2)[where M = Q] 5(1,3-) by auto
   then have "M = (Pred F')[P' <- x] \<and> Pred E = (Pred F')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = Pred Q\<close> by simp
   then show ?case by blast
 next
-  case (6 x E Q)
+  case (6 x E Q p M)
   have "M[N <- z] = Pair (E[P <- x]) Q"
-    by (simp add: "6.hyps"(2) "6.prems"(1))
+    by (simp add: 6)
   then obtain Q1 Q2 where "M = Pair Q1 Q2" and "E[P <- x] = Q1[N <- z]" and "Q = Q2[N <- z]"
-    using subst_Pair_inversion "6.prems"(4) by metis
+    using subst_Pair_inversion 6 by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q1" 
     using blocked_inductive \<open>M = Pair Q1 Q2\<close> by metis
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q1 = E'[P' <- x]"
-    using "6.IH"[where M = Q] 6 by fastforce
+    using 6(2)[where M = Q] 6 by fastforce
    moreover have "x \<notin> FVars_term Q2"
-    using "6.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair Q1 Q2\<close>
+    using 6 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair Q1 Q2\<close>
     by simp
   ultimately have "M = (Pair E' Q2)[P' <- x] \<and> Pair E Q = (Pair E' Q2)[N <- z] \<and> P = P'[N <- z]"
     by (simp add: \<open>M = term.Pair Q1 Q2\<close> \<open>Q = Q2[N <- z]\<close>)
   then show ?case by blast
 next
-  case (7 V x E)
+  case (7 V x E p M)
   have "M[N <- z] = Pair V E[P <- x]"
-    by(simp add:"7.hyps" "7.prems")
+    by(simp add: 7)
   then obtain V' Q where "M = Pair V' Q" and "V = V'[N <- z]" and "E[P <- x] = Q[N <- z]"
-    using subst_Pair_inversion "7.prems" by metis
+    using subst_Pair_inversion 7 by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using blocked_inductive(7) \<open>M = Pair V' Q\<close> \<open>val V'\<close> sorry
   (* How can we know that V' is value? It's possible for V to be val while V' not val.
      For example, consider V = Succ Zero, V' = Succ x, V = V'[Zero <- x]*)
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q = E'[P' <- x]"
-    using "7.IH"[where M = Q] 7 by fastforce
+    using 7(3)[where M = Q] 7 by fastforce
    moreover have "x \<notin> FVars_term V'"
-    using "7.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair V' Q\<close>
+    using 7 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair V' Q\<close>
     by simp
   ultimately have "M = (Pair V' E')[P' <- x] \<and> Pair V E = (Pair V' E')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = term.Pair V' Q\<close> \<open>V = V'[N <- z]\<close> \<open>Q = E'[P' <- x]\<close> by simp
   then show ?case by blast
 next
-  case (8 hole E Q x M)
+  case (8 hole E Q x p M)
   show ?case sorry
 next
-  case (9 x E Q1 Q2)
+  case (9 x E Q1 Q2 p M)
   have "M[N <- z] = If E[P <- x] Q1 Q2"
-    by(simp add:"9.hyps" "9.prems")
+    by(simp add: 9)
   then obtain Q0 Q1' Q2' where "M = If Q0 Q1' Q2'" and "E[P <- x] = Q0[N <- z]" and "Q1 = Q1'[N <- z]" and "Q2 = Q2'[N <- z]"
-    using subst_If_inversion "9.prems" by metis
-  thm "9.IH"[where M = Q0]
+    using subst_If_inversion 9 by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q0"
     using blocked_inductive(9) \<open>M = If Q0 Q1' Q2'\<close> by auto
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q0 = E'[P' <- x]"
-    using "9.IH"[where M = Q0] 9 by fastforce
+    using 9(2)[where M = Q0] 9 by fastforce
   moreover have "x \<notin> FVars_term Q1'" and "x \<notin> FVars_term Q2'"
-    using "9.hyps" \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = If Q0 Q1' Q2'\<close>
+    using 9 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = If Q0 Q1' Q2'\<close>
     by auto
   ultimately have "M = (If E' Q1' Q2')[P' <- x] \<and> (If E Q1 Q2) = (If E' Q1' Q2')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = If Q0 Q1' Q2'\<close> \<open>Q1 = Q1'[N <- z]\<close> \<open>Q2 = Q2'[N <- z]\<close> \<open>Q0 = E'[P' <- x]\<close> by simp
