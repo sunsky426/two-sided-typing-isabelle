@@ -507,7 +507,7 @@ next
   obtain F P' where "F = Var x" "P' = M" by simp
   show ?case by (metis 1(3) \<open>M[N <- z] = P\<close> usubst_simps(5))
 next
-  case (2 x E M f a Q p)
+  case (2 x E Q f a p M)
   (*
   have "x \<notin> FVars_term Q" sorry
   have "M[N <- z] = App (Fix f a Q) E[P <- x]" sorry
@@ -813,6 +813,56 @@ proof -
     using b3_1[of x E M N z "M[N <- z]" P] \<open>M[N <- z] \<rightarrow> P\<close> by auto
   then show ?thesis by blast
 qed
+
+context fixes x :: "'a :: var" begin
+private definition Uctor :: "('a, 'a, 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat), 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat)) term_pre \<Rightarrow> unit \<Rightarrow> nat" where
+  "Uctor \<equiv> \<lambda>pre _. case Rep_term_pre pre of
+      Inl (Inl (Inl _)) \<Rightarrow> 0
+    | Inl (Inl (Inr (_, c))) \<Rightarrow> c ()
+    | Inl (Inr (Inl (_, c))) \<Rightarrow> c ()
+    | Inl (Inr (Inr ((_, c1), (_, c2), (_, c3)))) \<Rightarrow> c1 () + c2 () + c3 ()
+    | Inr (Inl (Inl y)) \<Rightarrow> (if x = y then 1 else 0)
+    | Inr (Inl (Inr ((_, c1), (_, c2)))) \<Rightarrow> c1 () + c2 ()
+    | Inr (Inr (Inl (_, _, _, c))) \<Rightarrow> c ()
+    | Inr (Inr (Inr (Inl ((_, c1), (_, c2))))) \<Rightarrow> c1 () + c2 ()
+    | Inr (Inr (Inr (Inr (_, (_, c1), (_, c2))))) \<Rightarrow> c1 () + c2 ()"
+interpretation count: REC_term where
+  Pmap = "\<lambda>_. id" and
+  PFVars = "\<lambda>_. {}" and
+  validP = "\<lambda>_::unit. True" and
+  avoiding_set = "{x}" and
+  Umap = "\<lambda>_ _. id" and
+  UFVars = "\<lambda>_ _. {}" and
+  validU = "\<lambda>_ :: nat. True" and
+  Uctor = Uctor
+  by standard
+    (auto simp: Uctor_def map_term_pre_def Abs_term_pre_inverse[OF UNIV_I] in_imsupp
+      dest: not_in_imsupp_same split: sum.splits)
+
+definition "count_term t = count.REC_term t ()"
+
+lemmas count_term_ctor = count.REC_ctor[simplified,
+  folded count_term_def, unfolded Uctor_def map_term_pre_def o_apply Abs_term_pre_inverse[OF UNIV_I]
+  case_sum_map_sum case_prod_map_prod prod.case, folded Uctor_def count_term_def]
+
+lemmas count_term_swap = count.REC_swap[simplified, folded count_term_def]
+
+end
+
+lemma count_term_simps[simp]:
+  "count_term x Zero = 0"
+  "count_term x (Pred M) = count_term x M"
+  "count_term x (Succ M) = count_term x M"
+  "count_term x (If M N P) = count_term x M + count_term x N + count_term x P"
+  "count_term x (Var y) = (if x = y then 1 else 0)"
+  "count_term x (App M N) = count_term x M + count_term x N"
+  "x \<noteq> f \<Longrightarrow> x \<noteq> a \<Longrightarrow> count_term x (Fix f a M) = count_term x M"
+  "count_term x (Pair M N) = count_term x M + count_term x N"
+  "x \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term M = {} \<Longrightarrow> count_term x (Let xy M N) = count_term x M + count_term x N"
+  unfolding Zero_def Pred_def Succ_def If_def Var_def Fix_def App_def Pair_def Let_def
+  by (subst count_term_ctor; auto simp:
+    set1_term_pre_def set2_term_pre_def set3_term_pre_def set4_term_pre_def
+    noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
 
 lemma b4:
   assumes "M[N <- x] \<rightarrow>* P" and "normal P" and "N \<greatersim> Q"
