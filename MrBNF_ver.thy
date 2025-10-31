@@ -129,9 +129,9 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | PredS: "Pred (Succ n) \<rightarrow> n"
 | FixBeta: "App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
 
-inductive beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>*" 70) where
-  refl: "M \<rightarrow>* M"
-| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>* P \<rbrakk> \<Longrightarrow> M \<rightarrow>* P"
+inductive beta_star :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var term \<Rightarrow> bool"  ("_ \<rightarrow>*[_] _" [70, 0, 70] 70) where
+  refl: "M \<rightarrow>*[0] M"
+| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>*[n] P \<rbrakk> \<Longrightarrow> M \<rightarrow>*[Suc n] P"
 
 coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
@@ -270,7 +270,7 @@ fun
 | "\<lblot>Prod A B\<rblot> = case_prod Pair ` (\<lblot>A\<rblot> \<times> \<lblot>B\<rblot>)"
 | "\<lblot>To A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. V \<in> \<lblot>A\<rblot> \<longrightarrow> M[V <- x][Fix f x M <- f] \<in> \<T>\<^sub>\<bottom>\<lblot>B\<rblot>}"
 | "\<lblot>OnlyTo A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. M[V <- x][Fix f x M <- f] \<in> \<T>\<lblot>B\<rblot> \<longrightarrow> V \<in> \<lblot>A\<rblot>}"
-| "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
+| "\<T>\<lblot>A\<rblot> = {M. \<exists>n. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>*[n] V \<and> val V}"
 | "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
 
 type_synonym 'var valuation = "('var \<times> 'var term) list"
@@ -350,7 +350,7 @@ inductive normal :: "'var::var term \<Rightarrow> bool" where
   "\<not>(\<exists>N'. N \<rightarrow> N') \<Longrightarrow> normal N"
 
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
-  "\<exists>N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
+  "\<exists>m n N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>*[n] N) \<longrightarrow> (Q \<rightarrow>*[m] N)) \<Longrightarrow> P \<greatersim> Q"
 
 thm term.subst
 
@@ -864,10 +864,45 @@ lemma count_term_simps[simp]:
     set1_term_pre_def set2_term_pre_def set3_term_pre_def set4_term_pre_def
     noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
 
+section \<open>B4\<close>
+
+
+lemma my_induct[case_names lex]:
+  assumes "\<And>n M. (\<And>m N. m < n \<Longrightarrow> P m x N) \<Longrightarrow> (\<And>N. count_term x N < count_term x M \<Longrightarrow> P n x N) \<Longrightarrow> P n x M"
+  shows "P (n :: nat) x (M :: 'a :: var term)"
+  apply (induct "(n, M)" arbitrary: n M rule: wf_induct[OF wf_mlex[OF wf_measure], of fst "count_term x o snd"])
+  apply (auto simp add: mlex_iff intro: assms)
+  done
+
 lemma b4:
-  assumes "M[N <- x] \<rightarrow>* P" and "normal P" and "N \<greatersim> Q"
-  shows "diverge M[Q <- x] \<or> (\<exists>M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>* M'[Q <- x])"
-  sorry
+  assumes "M[N <- x] \<rightarrow>*[n] P" and "normal P" and "N \<greatersim> Q"
+  shows "diverge M[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>*[m] M'[Q <- x])"
+  using assms
+proof (induct n x M rule: my_induct)
+  case (lex n M)
+  thm lex(1,2)
+  show ?case
+  proof (cases n)
+    case 0
+    with lex(3) have "P = M[N <- x]"
+      using beta_star.cases by auto
+    then show ?thesis
+      by (intro disjI2 exI[of _ 0] exI[of _ M]) (auto intro: beta_star.refl)
+  next
+    case (Suc m)
+    then show ?thesis
+    proof (cases "eval_ctx x M")
+      case True
+      then show ?thesis sorry
+    next
+      case False
+      then have "\<not> blocked x M"
+        unfolding blocked_def
+      then show ?thesis
+        sorry
+    qed
+  qed
+qed
 
 inductive b5_prop :: "'var::var term \<Rightarrow> bool" where
   "(V \<noteq> Fix _ _ _ \<Longrightarrow> W = V) \<Longrightarrow> b5_prop W" (* no correct, should be if V has Fix _ _ _ as subterm. Is there is subterm predicate defined?*)
