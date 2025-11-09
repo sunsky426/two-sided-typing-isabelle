@@ -489,7 +489,8 @@ next
   then show ?case using val.intros by auto
 qed
 
-thm eval_ctx.strong_induct
+lemma FVars_subst: "(FVars_term M[N <- z] \<union> {z}) \<supseteq> FVars_term M"
+  sorry
 
 lemma b2:
   assumes "eval_ctx x E"
@@ -625,12 +626,18 @@ next
   moreover have "hole \<notin> FVars_term Q'"
     using 8 \<open>hole \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Let x R Q'\<close>
     by simp
-  thm usubst_simps(9)[of hole x P' E' Q']
-  ultimately have "Let x E'[P' <- hole] Q' = (Let x E' Q')[P' <- hole]"
-    using usubst_simps(9)[of hole x P' E' Q'] \<open>M = Let x R Q'\<close> \<open>R = E'[P' <- hole]\<close> "8"(1)
-    sorry
-(*"Let x E Q = (Let x E' Q')[N <- z]"usubst_simps(9)[of z x N E' Q']*)
-  then show ?case sorry
+  moreover have "dset x \<inter> FVars_term E' = {}" and "dset x \<inter> FVars_term P' = {}"
+    using FVars_subst[of E' N z] FVars_subst[of P' N z] 8(1) \<open>E = E'[N <- z]\<close> \<open>P = P'[N <- z]\<close>
+    by auto
+  ultimately have "M = (Let x E' Q')[P' <- hole]" 
+    using usubst_simps(9)[of hole x P' E' Q'] 8(1) \<open>M = Let x R Q'\<close> by auto
+  moreover have "Let x E Q = (Let x E' Q')[N <- z]"
+    using usubst_simps(9)[of z x N E' Q'] \<open>dset x \<inter> FVars_term E' = {}\<close> 8(1)
+    using \<open>E = E'[N <- z]\<close> \<open>Q'[N <- z] = Q\<close>
+    by fastforce
+  ultimately have "M = (Let x E' Q')[P' <- hole] \<and> Let x E Q = (Let x E' Q')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>P = P'[N <- z]\<close> by blast
+  then show ?case by auto
 next
   case (9 x E Q1 Q2 p M)
   have "M[N <- z] = If E[P <- x] Q1 Q2"
