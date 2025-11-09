@@ -2,6 +2,8 @@ theory MrBNF_ver
   imports Binders.MRBNF_Recursor "Case_Studies.FixedCountableVars" "Nominal2.Nominal2"
 begin
 
+section \<open>Def\<close>
+
 datatype "type" = 
     Nat
   | Prod "type" "type"
@@ -259,6 +261,8 @@ lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<tur
   apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
   done
 
+section \<open>Semantics\<close>
+
 definition "Vals0 = {V. val V}"
 
 fun
@@ -301,6 +305,8 @@ inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 
 binder_inductive (no_auto_equiv) eval_ctx
   sorry
+
+section \<open>B2\<close>
 
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
   "blocked z M = (\<exists> hole E. (eval_ctx hole E) \<and> (M = E[Var z <- hole]))"
@@ -422,6 +428,7 @@ lemma subst_If_inversion:
 
 lemma subst_Fix_inversion:
   assumes "M[t <- x] = Fix f z Q" and "\<not> blocked x M"
+(*  assumes "f \<noteq> x" and "f \<notin> FVars_term t" and "x \<noteq> z" and "z \<notin> FVars_term t" *)
   obtains Q' where "M = Fix f z Q'" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
@@ -482,6 +489,8 @@ next
   then show ?case using val.intros by auto
 qed
 
+thm eval_ctx.strong_induct
+
 lemma b2:
   assumes "eval_ctx x E"
     and "M[N <- z] = E[P <- x]"
@@ -497,26 +506,37 @@ proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P",
     rule_format, rotated -5, of "(z, N, M, E, x, P)" M E x, OF _ assms(2,3,4,5,1),
     simplified prod.inject simp_thms True_implies_equals], goal_cases card 1 2 3 4 5 6 7 8 9)
-  case (card p)
-  then show ?case
-    unfolding split_beta
-    by (intro ordLess_ordLeq_trans[OF term.set_bd var_class.large'] Un_bound infinite_UNIV) simp
+case (card p)
+then show ?case
+  unfolding split_beta
+  sorry
 next
   case (1 x p M)
   have "M[N <- z] = P" by (simp add: 1(2))
   obtain F P' where "F = Var x" "P' = M" by simp
   show ?case by (metis 1(3) \<open>M[N <- z] = P\<close> usubst_simps(5))
 next
-  case (2 x E Q f a p M)
-  (*
-  have "x \<notin> FVars_term Q" sorry
-  have "M[N <- z] = App (Fix f a Q) E[P <- x]" sorry
-  obtain Q' R where "M = App (Fix f x Q') R" sorry
-  have "Q'[N <- a] = Q" and "E[N <- z] = E[P <- x]" sorry
-  have "\<not> blocked z R" sorry
-  obtain E' P' where "R = E'[P' <- x]" and "E'[N <- z] = E" and "P'[N <- z] = P" sorry
-  obtain F where "F = App (Fix f x Q') E'" sorry *)
-  then show ?case sorry
+  case (2 hole E Q f a p M)
+  have "M[N <- z] = App (Fix f a Q) (E[P <- hole])" 
+    using "2" by auto
+  then obtain F R where "M = App F R" and "F[N <- z] = Fix f a Q" and "R[N <- z] = E[P <- hole]"
+    using subst_App_inversion[of M N z "Fix f a Q" "E[P <- hole]"] "2"(9) by auto
+  moreover have "\<not> blocked z F" using "2"(9) blocked_inductive(3) \<open>M = App F R\<close> by auto
+  ultimately obtain Q' where "M = App (Fix f a Q') R" and "Q'[N <- z] = Q"
+     using subst_Fix_inversion[of F N z f a Q] by auto
+  then have "\<not> blocked z R"
+    using \<open>\<not> blocked z M\<close> blocked_inductive(2) by blast
+  then obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
+    using \<open>R[N <- z] = E[P <- hole]\<close> 2(3)[of "(z, N, R, E, hole, P)" R] 2(8)
+    by (metis Un_iff \<open>M = App F R\<close> term.set(6))
+  moreover have "hole \<notin> FVars_term Q'"
+    using 2 \<open>hole \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App (Fix f a Q') R\<close>
+    by simp
+  ultimately have "M = (App (Fix f a Q') E')[P' <- hole] \<and> App (Fix f a Q) E = (App (Fix f a Q') E')[N <- z] \<and> P = P'[N <- z]"
+    using \<open>M = App (Fix f a Q') R\<close> \<open>Q'[N <- z] = Q\<close> \<open>R[N <- z] = E[P <- hole]\<close>
+    by (metis "2"(8) Un_iff \<open>F[N <- z] = Fix f a Q\<close> \<open>M = App F R\<close> subst_idle
+        term.inject(5) usubst_simps(6))
+  then show ?case by metis
 next
   case (3 x E Q p M)
   have "M[N <- z] = App (E[P <- x]) Q" using 3 by simp
@@ -581,9 +601,8 @@ next
   then obtain V' Q where "M = Pair V' Q" and "V = V'[N <- z]" and "E[P <- x] = Q[N <- z]"
     using subst_Pair_inversion 7 by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
-    using blocked_inductive(7) \<open>M = Pair V' Q\<close> \<open>val V'\<close> sorry
-  (* How can we know that V' is value? It's possible for V to be val while V' not val.
-     For example, consider V = Succ Zero, V' = Succ x, V = V'[Zero <- x]*)
+    using blocked_inductive(7) \<open>M = Pair V' Q\<close> subst_val_inversion
+    using "7"(1) blocked_inductive(6) calculation(2) by blast
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q = E'[P' <- x]"
     using 7(3)[where M = Q] 7 by fastforce
    moreover have "x \<notin> FVars_term V'"
@@ -594,7 +613,24 @@ next
   then show ?case by blast
 next
   case (8 hole E Q x p M)
-  show ?case sorry
+  have "M[N <- z] = Let x E[P <- hole] Q"
+    using "8" usubst_simps(9)[of hole x P E Q]
+    by fastforce
+  then obtain R Q' where "M = Let x R Q'" and "Q'[N <- z] = Q" and "R[N <- z] = E[P <- hole]"
+    using subst_Let_inversion[of M N z x "E[P <- hole]" Q] "8"(9) by blast
+  moreover have "\<not> blocked z R" using "8"(9) blocked_inductive \<open>M = Let x R Q'\<close> by metis
+  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
+    using 8(3)[of "(z, N, R, E, hole, P)" R] 8(8)
+    by (metis Un_iff term.set(9))
+  moreover have "hole \<notin> FVars_term Q'"
+    using 8 \<open>hole \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Let x R Q'\<close>
+    by simp
+  thm usubst_simps(9)[of hole x P' E' Q']
+  ultimately have "Let x E'[P' <- hole] Q' = (Let x E' Q')[P' <- hole]"
+    using usubst_simps(9)[of hole x P' E' Q'] \<open>M = Let x R Q'\<close> \<open>R = E'[P' <- hole]\<close> "8"(1)
+    sorry
+(*"Let x E Q = (Let x E' Q')[N <- z]"usubst_simps(9)[of z x N E' Q']*)
+  then show ?case sorry
 next
   case (9 x E Q1 Q2 p M)
   have "M[N <- z] = If E[P <- x] Q1 Q2"
@@ -613,12 +649,20 @@ next
   then show ?case by blast
 qed
 
-thm beta.strong_induct
+section \<open>B3\<close>
+
+thm eval_ctx.strong_induct
 
 lemma b3_1: 
   assumes "eval_ctx x E" and "M[N <- z] = E[P1 <- x]" and "P1 \<rightarrow> P2" and "\<not> blocked z M"
   shows "\<exists>M'. M \<rightarrow> M' \<and> M'[N <- z] = E[P2 <- x]"
   using assms
+(* proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
+    p = (z, N, M, E, x, P1, P2) \<longrightarrow> M[N <- z] = E[P1 <- x] \<longrightarrow>
+    P1 \<rightarrow> P2 \<longrightarrow> \<not> blocked z M \<longrightarrow> (\<exists>M'. M \<rightarrow> M' \<and> M'[N <- z] = E[P2 <- x])"
+    and K = "\<lambda>(z, N, M, E, x, P1, P2). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P1 \<union> FVars_term P2",
+    rule_format, rotated -5, of "(z, N, M, E, x, P1, P2)" M E x, OF _ assms(2,3,5,4,1),
+    simplified prod.inject simp_thms True_implies_equals], goal_cases card 1 2 3 4 5 6 7 8 9) *)
 proof (induction x E arbitrary: M rule:eval_ctx.induct)
   case (1 hole)
   show ?case
@@ -814,6 +858,8 @@ proof -
   then show ?thesis by blast
 qed
 
+section \<open>B4\<close>
+
 context fixes x :: "'a :: var" begin
 private definition Uctor :: "('a, 'a, 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat), 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat)) term_pre \<Rightarrow> unit \<Rightarrow> nat" where
   "Uctor \<equiv> \<lambda>pre _. case Rep_term_pre pre of
@@ -863,9 +909,6 @@ lemma count_term_simps[simp]:
   by (subst count_term_ctor; auto simp:
     set1_term_pre_def set2_term_pre_def set3_term_pre_def set4_term_pre_def
     noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
-
-section \<open>B4\<close>
-
 
 lemma my_induct[case_names lex]:
   assumes "\<And>n M. (\<And>m N. m < n \<Longrightarrow> P m x N) \<Longrightarrow> (\<And>N. count_term x N < count_term x M \<Longrightarrow> P n x N) \<Longrightarrow> P n x M"
@@ -918,4 +961,6 @@ lemma b6:
   assumes "stuck M[N <- z]" and "N \<greatersim> P"
   shows "diverge M[P <- z] \<or> stuck M[P <- z]"
   sorry
+
+term FVars_term
 end
