@@ -428,7 +428,7 @@ lemma subst_If_inversion:
 
 lemma subst_Fix_inversion:
   assumes "M[t <- x] = Fix f z Q" and "\<not> blocked x M"
-(*  assumes "f \<noteq> x" and "f \<notin> FVars_term t" and "x \<noteq> z" and "z \<notin> FVars_term t" *)
+  assumes "f \<noteq> x" and "f \<notin> FVars_term t" and "x \<noteq> z" and "z \<notin> FVars_term t"
   obtains Q' where "M = Fix f z Q'" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
@@ -437,7 +437,8 @@ lemma subst_Fix_inversion:
   sorry
 
 lemma subst_Let_inversion:
-assumes "M[t <- x] = Let xy P Q" and "\<not> blocked x M"
+  assumes "M[t <- x] = Let xy P Q" and "\<not> blocked x M"
+  assumes "x \<notin> dset xy" and "FVars_term t \<inter> dset xy = {}"
   obtains P' Q' where "M = Let xy P' Q'" and "P'[t <- x] = P" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
@@ -485,7 +486,7 @@ next
 next
   case (4 f x M)
   then obtain M' where "V' = Fix f x M'" and "M'[N <- z] = M"
-    using subst_Fix_inversion[of V' N z f x M] by auto
+    using subst_Fix_inversion[of V' N z f x M] sorry (* this just needs binder_induction*)
   then show ?case using val.intros by auto
 qed
 
@@ -524,7 +525,7 @@ next
     using subst_App_inversion[of M N z "Fix f a Q" "E[P <- hole]"] "2"(9) by auto
   moreover have "\<not> blocked z F" using "2"(9) blocked_inductive(3) \<open>M = App F R\<close> by auto
   ultimately obtain Q' where "M = App (Fix f a Q') R" and "Q'[N <- z] = Q"
-     using subst_Fix_inversion[of F N z f a Q] by auto
+     using subst_Fix_inversion[of F N z f a Q] 2 by auto
   then have "\<not> blocked z R"
     using \<open>\<not> blocked z M\<close> blocked_inductive(2) by blast
   then obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
@@ -618,7 +619,7 @@ next
     using "8" usubst_simps(9)[of hole x P E Q]
     by fastforce
   then obtain R Q' where "M = Let x R Q'" and "Q'[N <- z] = Q" and "R[N <- z] = E[P <- hole]"
-    using subst_Let_inversion[of M N z x "E[P <- hole]" Q] "8"(9) by blast
+    using subst_Let_inversion[of M N z x "E[P <- hole]" Q] "8"(9) "8"(1) by blast
   moreover have "\<not> blocked z R" using "8"(9) blocked_inductive \<open>M = Let x R Q'\<close> by metis
   ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
     using 8(3)[of "(z, N, R, E, hole, P)" R] 8(8)
