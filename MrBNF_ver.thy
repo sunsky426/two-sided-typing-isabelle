@@ -316,8 +316,98 @@ lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Long
   apply(auto simp add:eval_ctx.intros)
   sorry
 
+lemma eval_ctxt_FVars_term: "eval_ctx x E \<Longrightarrow> x \<in> FVars_term E"
+  by (induct x E rule: eval_ctx.induct) auto
+
+lemma SSupp_term_Var[simp]: "SSupp_term Var = {}"
+  unfolding SSupp_term_def by (auto simp: tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
+
+lemma IImsupp_term_Var[simp]: "IImsupp_term Var = {}"
+  unfolding IImsupp_term_def by auto
+
+lemma tvsubst_term_Var: "tvsubst_term Var t = (t :: 'var :: var term)"
+  by (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> tvsubst_term Var t = (t :: 'var :: var term)" and K = FVars_term, simplified])
+    (auto simp: Int_Un_distrib intro!: ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
+
+lemma IImsupp_term_bound:
+  fixes f ::"'a::var \<Rightarrow> 'a term"
+  assumes "|SSupp_term f| <o |UNIV::'a set|"
+  shows "|IImsupp_term f| <o |UNIV::'a set|"
+  unfolding IImsupp_term_def using assms
+  by (simp add: UN_bound Un_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
+
+lemma tvVVr_tvsubst_term_eq_Var[simp]: "tvVVr_tvsubst_term x = Var x"
+  by (auto simp: tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
+
+lemma SSupp_term_tvsubst_term:
+  fixes f g ::"'a::var \<Rightarrow> 'a term"
+  assumes "|SSupp_term f| <o |UNIV::'a set|"
+  shows "SSupp_term (tvsubst_term f \<circ> g) \<subseteq> SSupp_term f \<union> SSupp_term g"
+  using assms by (auto simp: SSupp_term_def)
+
+lemma FVars_tvsubst_term:
+  assumes "|SSupp_term (g::'var \<Rightarrow> _)| <o |UNIV::'var::var set|"
+  shows "FVars_term (tvsubst_term g t) = (\<Union>x\<in>FVars_term t. FVars_term (g x))"
+  apply (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> FVars_term (tvsubst_term g t) = \<Union>((FVars_term \<circ> g) ` FVars_term t)"
+        and K = "\<lambda>t. FVars_term t \<union> IImsupp_term g", simplified, rule_format])
+           apply (auto simp: Int_Un_distrib assms IImsupp_term_bound
+      intro!: Un_bound assms ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
+  apply (metis (mono_tags, lifting) Diff_iff IImsupp_term_def SSupp_term_def Un_iff empty_iff insert_iff mem_Collect_eq term.FVars_VVr)
+  apply (metis singletonD term.FVars_VVr term.in_IImsupp)
+  apply (metis singletonD term.FVars_VVr term.in_IImsupp)
+  apply (metis (mono_tags, lifting) Diff_iff IImsupp_term_def Int_emptyD SSupp_term_def Un_iff mem_Collect_eq singletonD term.FVars_VVr)
+  apply (metis Int_emptyD empty_iff insert_iff term.FVars_VVr term.in_IImsupp)
+  done
+
+lemma IImsupp_term_tvsubst_term:
+  fixes f g ::"'a::var \<Rightarrow> 'a term"
+  assumes "|SSupp_term f| <o |UNIV::'a set|"
+  shows "IImsupp_term (tvsubst_term f \<circ> g) \<subseteq> IImsupp_term f \<union> IImsupp_term g"
+  using assms using SSupp_term_tvsubst_term[of f g]
+  apply (auto simp: IImsupp_term_def FVars_tvsubst_term)
+  by (metis (mono_tags, lifting) SSupp_term_def Un_iff mem_Collect_eq singletonD sup.orderE term.FVars_VVr)
+
+lemma SSupp_term_tvsubst_term_bound:
+  fixes f g ::"'a::var \<Rightarrow> 'a term"
+  assumes "|SSupp_term f| <o |UNIV::'a set|"
+  assumes "|SSupp_term g| <o |UNIV::'a set|"
+  shows "|SSupp_term (tvsubst_term f \<circ> g)| <o |UNIV :: 'a set|"
+  using SSupp_term_tvsubst_term[of f g] assms
+  by (simp add: card_of_subset_bound Un_bound)
+
+lemma tvsubst_term_comp:
+  assumes "|SSupp_term f| <o |UNIV :: 'var set|" "|SSupp_term g| <o |UNIV :: 'var set|"
+  shows "tvsubst_term f (tvsubst_term g t) = tvsubst_term (tvsubst_term f o g) (t :: 'var :: var term)"
+  apply (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> tvsubst_term f (tvsubst_term g t) = tvsubst_term (tvsubst_term f o g) (t :: 'var :: var term)"
+        and K = "\<lambda>t. FVars_term t \<union> IImsupp_term f \<union> IImsupp_term g", simplified, rule_format])
+           apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms
+      dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated]
+      intro!: Un_bound assms IImsupp_term_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
+   apply (subst term.subst)
+      apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated])
+  apply (subst (1 2) term.subst)
+        apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms FVars_tvsubst_term dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated])
+  apply (metis disjoint_iff_not_equal singletonD term.FVars_VVr term.in_IImsupp)
+  done
+
+lemma tvsubst_term_cong:
+  assumes "|SSupp_term f| <o |UNIV :: 'var set|" "|SSupp_term g| <o |UNIV :: 'var set|" "\<And>x. x \<in> FVars_term t \<Longrightarrow> f x = g x"
+  shows "tvsubst_term f t = tvsubst_term g (t :: 'var :: var term)"
+  apply (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> (\<forall>x \<in> FVars_term t. f x = g x) \<longrightarrow> tvsubst_term f t = tvsubst_term g (t :: 'var :: var term)"
+        and K = "\<lambda>t. FVars_term t \<union> IImsupp_term f \<union> IImsupp_term g", simplified, rule_format])
+  apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms term.permute_id dpair.map_id supp_id_bound
+      dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated]
+      intro!: Un_bound assms IImsupp_term_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'] exI[of _ id])
+   apply (metis (mono_tags, lifting) IImsupp_term_def SSupp_term_def Un_iff mem_Collect_eq)
+  apply (metis (mono_tags, lifting) Diff_iff Diff_triv IImsupp_term_def SSupp_term_def Un_iff mem_Collect_eq)
+  done
+
 lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> E[Var y <- x][Var z <- y] = E[Var z <- x]"
-  sorry
+  apply (cases "x = z")
+  subgoal
+    by (auto simp add: usubst_def tvsubst_term_comp intro!: tvsubst_term_cong SSupp_term_tvsubst_term_bound)
+  subgoal by (subst usubst_usubst) (auto dest: eval_ctxt_FVars_term)
+  done
 
 lemma blocked_inductive: 
   "blocked z (Var z)"
@@ -434,7 +524,8 @@ lemma subst_Fix_inversion:
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
   apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
-  sorry
+  subgoal sorry
+  done
 
 lemma subst_Let_inversion:
   assumes "M[t <- x] = Let xy P Q" and "\<not> blocked x M"
@@ -491,7 +582,8 @@ next
 qed
 
 lemma FVars_subst: "(FVars_term M[N <- z] \<union> {z}) \<supseteq> FVars_term M"
-  sorry
+  unfolding usubst_def
+  by (auto simp: FVars_tvsubst_term)
 
 
 thm eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
@@ -521,7 +613,7 @@ proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
 case (card p)
 then show ?case
   unfolding split_beta
-  sorry
+  by (intro Un_bound infinite_UNIV ordLess_ordLeq_trans[OF term.set_bd var_class.large']) auto
 next
   case (1 x p M)
   have "M[N <- z] = P" by (simp add: 1(2))
