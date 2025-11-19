@@ -170,25 +170,21 @@ lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV 
   by (rule term.strong_induct) auto
 
 lemma fresh_subst[simp]: "x \<notin> FVars_term t \<Longrightarrow> x \<notin> FVars_term s \<Longrightarrow> x \<notin> FVars_term (t[s <- y])"
-  apply (binder_induction t avoiding: s y rule: term_strong_induct)
-  apply auto
-  oops
+  by (binder_induction t avoiding: t s y rule: term_strong_induct)
+    (auto simp: Int_Un_distrib)
 
 lemma subst_idle[simp]: "y \<notin> FVars_term t \<Longrightarrow> t[s <- y] = t"
-  sorry (*TODO: Dmitriy*)
-(*
-  apply (binder_induction t avoiding: s y rule: term.strong_induct)
-  apply (auto simp:)
-  oops
-*)
+  by (binder_induction t avoiding: t s y rule: term_strong_induct) (auto simp: Int_Un_distrib)
+
+lemma FVars_usubst: "FVars_term M[N <- z] = FVars_term M - {z} \<union> (if z \<in> FVars_term M then FVars_term N else {})"
+  unfolding usubst_def
+  by (auto simp: term.Vrs_Sb split: if_splits)
 
 lemma usubst_usubst: "y1 \<noteq> y2 \<Longrightarrow> y1 \<notin> FVars_term s2 \<Longrightarrow> t[s1 <- y1][s2 <- y2] = t[s2 <- y2][s1[s2 <- y2] <- y1]"
-  sorry (*TODO: Dmitriy*)
-(*
-  apply (binder_induction t avoiding: y1 y2 s1 s2 rule: term.strong_induct)
-  apply auto
-  oops
-*)
+  apply (binder_induction t avoiding: t y1 y2 s1 s2 rule: term_strong_induct)
+          apply (auto simp: Int_Un_distrib FVars_usubst split: if_splits)
+  apply (subst (1 2) usubst_simps; auto simp: FVars_usubst split: if_splits)
+  done
 
 lemma dsel_dset[simp]: "dfst xy \<in> dset xy" "dsnd xy \<in> dset xy"
   by (transfer; auto)+
