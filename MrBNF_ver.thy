@@ -1,5 +1,5 @@
 theory MrBNF_ver
-  imports Binders.MRBNF_Recursor "Case_Studies.FixedCountableVars" "Nominal2.Nominal2"
+  imports Binders.MRBNF_Recursor "Case_Studies.FixedCountableVars"
 begin
 
 section \<open>Def\<close>
@@ -61,16 +61,11 @@ binder_datatype 'var "term" =
 definition usubst ("_[_ <- _]" [1000, 49, 49] 1000) where
   "usubst t u x = tvsubst_term (Var(x := u)) t"
 
-lemma SSupp_term_fun_upd: "SSupp_term (Var(x :: 'var :: var := u)) \<subseteq> {x}"
-  by (auto simp: SSupp_term_def tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
+lemma SSupp_term_fun_upd: "SSupp Var (Var(x :: 'var :: var := u)) \<subseteq> {x}"
+  by (auto simp: SSupp_def)
 
-lemma IImsupp_term_fun_upd: "IImsupp_term (Var(x :: 'var :: var := u)) \<subseteq> {x} \<union> FVars_term u"
-  by (auto simp: IImsupp_term_def SSupp_term_def tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
-
-lemma SSupp_term_fun_upd_bound[simp]:
-  "|SSupp_term (Var(x :: 'var :: var := u))| <o |UNIV :: 'var set|"
-  by (meson SSupp_term_fun_upd card_of_mono1 emp_bound infinite_UNIV insert_bound
-      ordLeq_ordLess_trans)
+lemma IImsupp_term_fun_upd: "IImsupp Var FVars_term (Var(x :: 'var :: var := u)) \<subseteq> {x} \<union> FVars_term u"
+  by (auto simp: IImsupp_def SSupp_def)
 
 lemma usubst_simps[simp]:
   "usubst Zero u y = Zero"
@@ -84,7 +79,7 @@ lemma usubst_simps[simp]:
   "usubst (Pair t1 t2) u y = Pair (usubst t1 u y) (usubst t2 u y)"
   "y \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term u = {} \<Longrightarrow> dset xy \<inter> FVars_term t1 = {} \<Longrightarrow>
   usubst (term.Let xy t1 t2) u y = term.Let xy (usubst t1 u y) (usubst t2 u y)"
-  unfolding usubst_def using IImsupp_term_fun_upd
+  unfolding usubst_def using IImsupp_term_fun_upd SSupp_term_fun_upd
   by (subst term.subst; fastforce)+
 
 inductive num :: "'var::var term \<Rightarrow> bool" where
@@ -159,16 +154,25 @@ lemma num_usubst[simp]: "num M \<Longrightarrow> M[V <- x] = M"
   by (induct M rule: num.induct) auto
 
 lemma val_usubst[simp]: "val M \<Longrightarrow> val V \<Longrightarrow> val (M[V <- x])"
-  by (binder_induction M avoiding: V x rule: val.strong_induct)
+  by (binder_induction M avoiding: V x rule: val.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
     (auto intro: val.intros)
 
+lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV :: 'a set| \<Longrightarrow>
+(\<And>\<rho>. P Zero \<rho>) \<Longrightarrow>
+(\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Succ x) \<rho>) \<Longrightarrow>
+(\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Pred x) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 x3 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.If x1 x2 x3) \<rho>) \<Longrightarrow>
+(\<And>x \<rho>. P (Var x) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> P (App x1 x2) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 x3 \<rho>. {x1, x2} \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (Fix x1 x2 x3) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> P (term.Pair x1 x2) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 x3 \<rho>. dset x1 \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.Let x1 x2 x3) \<rho>) \<Longrightarrow> \<forall>\<rho>. P t \<rho>"
+  by (rule term.strong_induct) auto
+
 lemma fresh_subst[simp]: "x \<notin> FVars_term t \<Longrightarrow> x \<notin> FVars_term s \<Longrightarrow> x \<notin> FVars_term (t[s <- y])"
-  sorry (*TODO: Dmitriy*)
-(*
-  apply (binder_induction t avoiding: s y rule: term.strong_induct)
+  apply (binder_induction t avoiding: s y rule: term_strong_induct)
   apply auto
   oops
-*)
 
 lemma subst_idle[simp]: "y \<notin> FVars_term t \<Longrightarrow> t[s <- y] = t"
   sorry (*TODO: Dmitriy*)
@@ -190,7 +194,7 @@ lemma dsel_dset[simp]: "dfst xy \<in> dset xy" "dsnd xy \<in> dset xy"
   by (transfer; auto)+
 
 lemma beta_usubst: "M \<rightarrow> N \<Longrightarrow> val V \<Longrightarrow> M[V <- x] \<rightarrow> N[V <- x]"
-  apply (binder_induction M N avoiding: M N V x rule: beta.strong_induct)
+  apply (binder_induction M N avoiding: M N V x rule: beta.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
   apply (auto intro: beta.intros simp: Int_Un_distrib usubst_usubst[of _ x V])
   apply (subst usubst_usubst[of _ x V])
     apply auto
@@ -312,18 +316,19 @@ definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
   "blocked z M = (\<exists> hole E. (eval_ctx hole E) \<and> (M = E[Var z <- hole]))"
 
 lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> eval_ctx y E[Var y <- x]"
-  apply(binder_induction x E avoiding: y rule: eval_ctx.strong_induct)
+(*
+  apply(binder_induction x E avoiding: y rule: eval_ctx.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
   apply(auto simp add:eval_ctx.intros)
-  sorry
+*)  sorry
 
 lemma eval_ctxt_FVars_term: "eval_ctx x E \<Longrightarrow> x \<in> FVars_term E"
   by (induct x E rule: eval_ctx.induct) auto
 
-lemma SSupp_term_Var[simp]: "SSupp_term Var = {}"
-  unfolding SSupp_term_def by (auto simp: tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
+lemma SSupp_term_Var[simp]: "SSupp Var Var = {}"
+  unfolding SSupp_def by auto
 
-lemma IImsupp_term_Var[simp]: "IImsupp_term Var = {}"
-  unfolding IImsupp_term_def by auto
+lemma IImsupp_term_Var[simp]: "IImsupp Var FVars_term Var = {}"
+  unfolding IImsupp_def by auto
 
 lemma tvsubst_term_Var: "tvsubst_term Var t = (t :: 'var :: var term)"
   by (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> tvsubst_term Var t = (t :: 'var :: var term)" and K = FVars_term, simplified])
@@ -331,76 +336,41 @@ lemma tvsubst_term_Var: "tvsubst_term Var t = (t :: 'var :: var term)"
 
 lemma IImsupp_term_bound:
   fixes f ::"'a::var \<Rightarrow> 'a term"
-  assumes "|SSupp_term f| <o |UNIV::'a set|"
-  shows "|IImsupp_term f| <o |UNIV::'a set|"
-  unfolding IImsupp_term_def using assms
+  assumes "|SSupp Var f| <o |UNIV::'a set|"
+  shows "|IImsupp Var FVars_term f| <o |UNIV::'a set|"
+  unfolding IImsupp_def using assms
   by (simp add: UN_bound Un_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
-
-lemma tvVVr_tvsubst_term_eq_Var[simp]: "tvVVr_tvsubst_term x = Var x"
-  by (auto simp: tvVVr_tvsubst_term_def tv\<eta>_term_tvsubst_term_def Var_def)
 
 lemma SSupp_term_tvsubst_term:
   fixes f g ::"'a::var \<Rightarrow> 'a term"
-  assumes "|SSupp_term f| <o |UNIV::'a set|"
-  shows "SSupp_term (tvsubst_term f \<circ> g) \<subseteq> SSupp_term f \<union> SSupp_term g"
-  using assms by (auto simp: SSupp_term_def)
+  assumes "|SSupp Var f| <o |UNIV::'a set|"
+  shows "SSupp Var (tvsubst_term f \<circ> g) \<subseteq> SSupp Var f \<union> SSupp Var g"
+  using assms by (auto simp: SSupp_def)
 
-lemma FVars_tvsubst_term:
-  assumes "|SSupp_term (g::'var \<Rightarrow> _)| <o |UNIV::'var::var set|"
-  shows "FVars_term (tvsubst_term g t) = (\<Union>x\<in>FVars_term t. FVars_term (g x))"
-  apply (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> FVars_term (tvsubst_term g t) = \<Union>((FVars_term \<circ> g) ` FVars_term t)"
-        and K = "\<lambda>t. FVars_term t \<union> IImsupp_term g", simplified, rule_format])
-           apply (auto simp: Int_Un_distrib assms IImsupp_term_bound
-      intro!: Un_bound assms ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
-  apply (metis (mono_tags, lifting) Diff_iff IImsupp_term_def SSupp_term_def Un_iff empty_iff insert_iff mem_Collect_eq term.FVars_VVr)
-  apply (metis singletonD term.FVars_VVr term.in_IImsupp)
-  apply (metis singletonD term.FVars_VVr term.in_IImsupp)
-  apply (metis (mono_tags, lifting) Diff_iff IImsupp_term_def Int_emptyD SSupp_term_def Un_iff mem_Collect_eq singletonD term.FVars_VVr)
-  apply (metis Int_emptyD empty_iff insert_iff term.FVars_VVr term.in_IImsupp)
-  done
+lemmas FVars_tvsubst_term = term.Vrs_Sb
 
 lemma IImsupp_term_tvsubst_term:
   fixes f g ::"'a::var \<Rightarrow> 'a term"
-  assumes "|SSupp_term f| <o |UNIV::'a set|"
-  shows "IImsupp_term (tvsubst_term f \<circ> g) \<subseteq> IImsupp_term f \<union> IImsupp_term g"
+  assumes "|SSupp Var f| <o |UNIV::'a set|"
+  shows "IImsupp Var FVars_term (tvsubst_term f \<circ> g) \<subseteq> IImsupp Var FVars_term f \<union> IImsupp Var FVars_term g"
   using assms using SSupp_term_tvsubst_term[of f g]
-  apply (auto simp: IImsupp_term_def FVars_tvsubst_term)
-  by (metis (mono_tags, lifting) SSupp_term_def Un_iff mem_Collect_eq singletonD sup.orderE term.FVars_VVr)
+  apply (auto simp: IImsupp_def FVars_tvsubst_term)
+  by (metis (mono_tags, lifting) SSupp_def comp_apply mem_Collect_eq singletonD term.set(5) term.subst(5))
 
 lemma SSupp_term_tvsubst_term_bound:
   fixes f g ::"'a::var \<Rightarrow> 'a term"
-  assumes "|SSupp_term f| <o |UNIV::'a set|"
-  assumes "|SSupp_term g| <o |UNIV::'a set|"
-  shows "|SSupp_term (tvsubst_term f \<circ> g)| <o |UNIV :: 'a set|"
+  assumes "|SSupp Var f| <o |UNIV::'a set|"
+  assumes "|SSupp Var g| <o |UNIV::'a set|"
+  shows "|SSupp Var (tvsubst_term f \<circ> g)| <o |UNIV :: 'a set|"
   using SSupp_term_tvsubst_term[of f g] assms
   by (simp add: card_of_subset_bound Un_bound)
 
 lemma tvsubst_term_comp:
-  assumes "|SSupp_term f| <o |UNIV :: 'var set|" "|SSupp_term g| <o |UNIV :: 'var set|"
+  assumes "|SSupp Var f| <o |UNIV :: 'var set|" "|SSupp Var g| <o |UNIV :: 'var set|"
   shows "tvsubst_term f (tvsubst_term g t) = tvsubst_term (tvsubst_term f o g) (t :: 'var :: var term)"
-  apply (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> tvsubst_term f (tvsubst_term g t) = tvsubst_term (tvsubst_term f o g) (t :: 'var :: var term)"
-        and K = "\<lambda>t. FVars_term t \<union> IImsupp_term f \<union> IImsupp_term g", simplified, rule_format])
-           apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms
-      dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated]
-      intro!: Un_bound assms IImsupp_term_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
-   apply (subst term.subst)
-      apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated])
-  apply (subst (1 2) term.subst)
-        apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms FVars_tvsubst_term dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated])
-  apply (metis disjoint_iff_not_equal singletonD term.FVars_VVr term.in_IImsupp)
-  done
+  unfolding term.Sb_comp[OF assms(2,1), symmetric] o_apply ..
 
-lemma tvsubst_term_cong:
-  assumes "|SSupp_term f| <o |UNIV :: 'var set|" "|SSupp_term g| <o |UNIV :: 'var set|" "\<And>x. x \<in> FVars_term t \<Longrightarrow> f x = g x"
-  shows "tvsubst_term f t = tvsubst_term g (t :: 'var :: var term)"
-  apply (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> (\<forall>x \<in> FVars_term t. f x = g x) \<longrightarrow> tvsubst_term f t = tvsubst_term g (t :: 'var :: var term)"
-        and K = "\<lambda>t. FVars_term t \<union> IImsupp_term f \<union> IImsupp_term g", simplified, rule_format])
-  apply (auto simp: Int_Un_distrib SSupp_term_tvsubst_term_bound assms term.permute_id dpair.map_id supp_id_bound
-      dest!: set_mp[OF IImsupp_term_tvsubst_term, rotated]
-      intro!: Un_bound assms IImsupp_term_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'] exI[of _ id])
-   apply (metis (mono_tags, lifting) IImsupp_term_def SSupp_term_def Un_iff mem_Collect_eq)
-  apply (metis (mono_tags, lifting) Diff_iff Diff_triv IImsupp_term_def SSupp_term_def Un_iff mem_Collect_eq)
-  done
+lemmas tvsubst_term_cong = term.Sb_cong
 
 lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> E[Var y <- x][Var z <- y] = E[Var z <- x]"
   apply (cases "x = z")
@@ -460,13 +430,12 @@ lemma subst_Zero_inversion:
   done
 
 lemma subst_Var_inversion:
-  assumes "M[t <- x] = Var y" and "\<not> blocked x M"
-  shows "M = Var z"
+  assumes "M[t <- x] = Var y" and "\<not> M = Var x"
+  shows "M = Var y"
   using assms
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:eval_ctx.intros blocked_inductive Int_Un_distrib split:if_splits)
-  using eval_ctx.intros(1)
-  sorry
+          apply(auto simp add:eval_ctx.intros blocked_inductive Int_Un_distrib split:if_splits)
+  done
 
 lemma subst_Succ_inversion: 
   assumes "M[t <- x] = Succ N" and "\<not> blocked x M"
@@ -495,6 +464,7 @@ lemma subst_App_inversion:
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
   apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
   using eval_ctx.intros(1) apply fastforce
+  sorry
   done
 
 lemma subst_Pair_inversion:
@@ -504,6 +474,7 @@ lemma subst_Pair_inversion:
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
   apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  sorry
   done
 
 lemma subst_If_inversion:
@@ -514,17 +485,20 @@ lemma subst_If_inversion:
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
   apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  sorry
   done
 
 lemma subst_Fix_inversion:
-  assumes "M[t <- x] = Fix f z Q" and "\<not> blocked x M"
+  assumes "M[t <- x] = Fix f z Q" and "\<not> M = Var x"
   assumes "f \<noteq> x" and "f \<notin> FVars_term t" and "x \<noteq> z" and "z \<notin> FVars_term t"
   obtains Q' where "M = Fix f z Q'" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
-  subgoal sorry
+          apply(auto simp add:blocked_inductive Int_Un_distrib split:if_splits)
+  subgoal for f' z' Q' \<sigma> sorry
+
+  thm avoiding_bij
   done
 
 lemma subst_Let_inversion:
@@ -555,18 +529,18 @@ lemma subst_val_inversion:
   assumes "val V" and "\<not> blocked z V'" and "V'[N <- z] = V"
   shows "val V'"
   using assms
-proof(induction V arbitrary: V' rule:val.induct)
-  case (1 x)
+proof(binder_induction V arbitrary: V' avoiding: "App N (Var z)" rule:val.strong_induct)
+  case (1 x V')
   then obtain y where "V' = Var y" using subst_Var_inversion by blast
   then show ?case using val.intros by auto
 next
-  case (2 n)
+  case (2 n V')
   then show ?case using subst_num_inversion
     by (metis val.simps)
 next
-  case (3 V1 V2)
+  case (3 V1 V2 V')
   obtain V1' V2' where "V' = Pair V1' V2'" and "V1'[N <- z] = V1" and "V2'[N <- z] = V2"
-    using \<open>\<not> blocked z V'\<close>  subst_Pair_inversion "3.prems" by blast
+    using \<open>\<not> blocked z V'\<close>  subst_Pair_inversion 3 by blast
   then have "\<not> blocked z V1'"
     using blocked_inductive \<open>\<not> blocked z V'\<close> by metis
   then have "val V1'" using \<open>V1'[N <- z] = V1\<close> "3.IH"(1)[of V1'] by auto
@@ -575,9 +549,10 @@ next
   then have "val V2'" using \<open>V2'[N <- z] = V2\<close> "3.IH"(2)[of V2'] by auto
   show ?case using \<open>val V1'\<close> \<open>val V2'\<close> \<open>V' = Pair V1' V2'\<close> val.intros by auto
 next
-  case (4 f x M)
+  case (4 f x M V')
   then obtain M' where "V' = Fix f x M'" and "M'[N <- z] = M"
-    using subst_Fix_inversion[of V' N z f x M] sorry (* this just needs binder_induction*)
+    using subst_Fix_inversion[of V' N z f x M] blocked_inductive(1)
+    by (metis Un_empty_right Un_insert_right insertCI insert_disjoint(2) term.set(5,6))
   then show ?case using val.intros by auto
 qed
 
@@ -609,7 +584,7 @@ proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     \<not> blocked z M \<longrightarrow> (\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z])"
     and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P",
     rule_format, rotated -5, of "(z, N, M, E, x, P)" M E x, OF _ assms(2,3,4,5,1),
-    simplified prod.inject simp_thms True_implies_equals], goal_cases card 1 2 3 4 5 6 7 8 9)
+    simplified prod.inject simp_thms True_implies_equals prod.case], goal_cases card 1 2 3 4 5 6 7 8 9)
 case (card p)
 then show ?case
   unfolding split_beta
@@ -627,7 +602,7 @@ next
     using subst_App_inversion[of M N z "Fix f a Q" "E[P <- hole]"] "2"(9) by auto
   moreover have "\<not> blocked z F" using "2"(9) blocked_inductive(3) \<open>M = App F R\<close> by auto
   ultimately obtain Q' where "M = App (Fix f a Q') R" and "Q'[N <- z] = Q"
-     using subst_Fix_inversion[of F N z f a Q] 2 by auto
+     using subst_Fix_inversion[of F N z f a Q] 2 blocked_inductive(1)[of z] by auto
   then have "\<not> blocked z R"
     using \<open>\<not> blocked z M\<close> blocked_inductive(2) by blast
   then obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
@@ -885,7 +860,7 @@ next
     using \<open>\<not> blocked z M\<close> subst_App_inversion by blast
   then have "\<not> blocked z F" using blocked_inductive \<open>\<not> blocked z M\<close> by blast
   then obtain Q' where "F = Fix f x Q'" and "Q'[N <- z] = Q"
-    using \<open>F[N <- z] = Fix f x Q\<close> 2(1) subst_Fix_inversion[of F N z f x Q] by auto
+    using \<open>F[N <- z] = Fix f x Q\<close> 2(1) subst_Fix_inversion[of F N z f x Q] blocked_inductive(1)[of z] by auto
   then have "\<not> blocked z R" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = App F R\<close> by blast
   then obtain R' where "R \<rightarrow> R'" and "R'[N <- z] = E[P2 <- hole]"
     using \<open>P1 \<rightarrow> P2\<close> "2"(3)[of _  R] \<open>R[N <- z] = E[P1 <- hole]\<close> by auto
