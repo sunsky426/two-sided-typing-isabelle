@@ -126,9 +126,12 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | PredS: "Pred (Succ n) \<rightarrow> n"
 | FixBeta: "App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
 
-inductive beta_star :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var term \<Rightarrow> bool"  ("_ \<rightarrow>*[_] _" [70, 0, 70] 70) where
-  refl: "M \<rightarrow>*[0] M"
-| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>*[n] P \<rbrakk> \<Longrightarrow> M \<rightarrow>*[Suc n] P"
+inductive betas :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var term \<Rightarrow> bool"  ("_ \<rightarrow>[_] _" [70, 0, 70] 70) where
+  refl: "M \<rightarrow>[0] M"
+| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>[n] P \<rbrakk> \<Longrightarrow> M \<rightarrow>[Suc n] P"
+
+definition beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" (infix "\<rightarrow>*" 70) where
+  "M \<rightarrow>* N = (\<exists>n. M \<rightarrow>[n] N)"
 
 coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
@@ -274,7 +277,7 @@ fun
 | "\<lblot>Prod A B\<rblot> = case_prod Pair ` (\<lblot>A\<rblot> \<times> \<lblot>B\<rblot>)"
 | "\<lblot>To A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. V \<in> \<lblot>A\<rblot> \<longrightarrow> M[V <- x][Fix f x M <- f] \<in> \<T>\<^sub>\<bottom>\<lblot>B\<rblot>}"
 | "\<lblot>OnlyTo A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. M[V <- x][Fix f x M <- f] \<in> \<T>\<lblot>B\<rblot> \<longrightarrow> V \<in> \<lblot>A\<rblot>}"
-| "\<T>\<lblot>A\<rblot> = {M. \<exists>n. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>*[n] V \<and> val V}"
+| "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
 | "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
 
 type_synonym 'var valuation = "('var \<times> 'var term) list"
@@ -412,7 +415,7 @@ inductive normal :: "'var::var term \<Rightarrow> bool" where
   "\<not>(\<exists>N'. N \<rightarrow> N') \<Longrightarrow> normal N"
 
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
-  "\<exists>m n N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>*[n] N) \<longrightarrow> (Q \<rightarrow>*[m] N)) \<Longrightarrow> P \<greatersim> Q"
+  "\<exists>N. normal N \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
 
 thm term.subst
 
@@ -985,6 +988,22 @@ qed
 
 section \<open>B4\<close>
 
+thm diverge.cases
+
+lemma div_ctx: 
+  assumes "diverge Q" and "eval_ctx x E" 
+  shows "diverge E[Q <- x]"
+(*
+  using assms(2)
+proof(induction x E rule: eval_ctx.induct)
+  case (2 hole E M f x)
+  obtain E' where "E[Q <- hole] \<rightarrow> E'" and "diverge E'"
+    using 2 diverge.cases[of "E[Q <- hole]"] by auto
+  have "App (Fix f x M)[Q <- hole] E[Q <- hole] \<Up>"
+  show ?case
+    using 2 usubst_simps
+*) sorry
+
 context fixes x :: "'a :: var" begin
 private definition Uctor :: "('a, 'a, 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat), 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat)) term_pre \<Rightarrow> unit \<Rightarrow> nat" where
   "Uctor \<equiv> \<lambda>pre _. case Rep_term_pre pre of
@@ -1036,38 +1055,64 @@ lemma count_term_simps[simp]:
     noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
 
 lemma my_induct[case_names lex]:
-  assumes "\<And>n M. (\<And>m N. m < n \<Longrightarrow> P m x N) \<Longrightarrow> (\<And>N. count_term x N < count_term x M \<Longrightarrow> P n x N) \<Longrightarrow> P n x M"
-  shows "P (n :: nat) x (M :: 'a :: var term)"
-  apply (induct "(n, M)" arbitrary: n M rule: wf_induct[OF wf_mlex[OF wf_measure], of fst "count_term x o snd"])
+  assumes "\<And>n N. (\<And>m M. m < n \<Longrightarrow> P m x M) \<Longrightarrow> (\<And>M. count_term x M < count_term x N \<Longrightarrow> P n x M) \<Longrightarrow> P n x N"
+  shows "P (n :: nat) x (N :: 'a :: var term)"
+  apply (induct "(n, N)" arbitrary: n N rule: wf_induct[OF wf_mlex[OF wf_measure], of fst "count_term x o snd"])
   apply (auto simp add: mlex_iff intro: assms)
   done
 
 lemma b4:
-  assumes "M[N <- x] \<rightarrow>*[n] P" and "normal P" and "N \<greatersim> Q"
-  shows "diverge M[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>*[m] M'[Q <- x])"
+  assumes "M[N <- x] \<rightarrow>[k] P" and "normal P" and "N \<greatersim> Q"
+  shows "diverge M[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>[m] M'[Q <- x])"
   using assms
-proof (induct n x M rule: my_induct)
-  case (lex n M)
-  thm lex(1,2)
+proof (induct k x M rule: my_induct)
+  case (lex k M)
   show ?case
-  proof (cases n)
-    case 0
-    with lex(3) have "P = M[N <- x]"
-      using beta_star.cases by auto
-    then show ?thesis
-      by (intro disjI2 exI[of _ 0] exI[of _ M]) (auto intro: beta_star.refl)
+    using lex(3)
+  proof (cases rule:betas.cases)
+    case refl
+    then have "P = M[N <- x]" and "M[Q <- x] \<rightarrow>[k] M[Q <- x]"
+       using betas.intros by auto
+    then show ?thesis by auto
   next
-    case (Suc m)
+    case (step P' k')
     then show ?thesis
-    proof (cases "eval_ctx x M")
+    proof (cases "blocked x M")
       case True
-      then show ?thesis sorry
+      then obtain hole E where "eval_ctx hole E" and "M = E[Var x <- hole]" 
+          using blocked_def[of x M] by auto
+      then have "M[Q <- x] = E[Q <- x][Q <- hole]"
+          using usubst_usubst[of hole x Q E "Var x"] sorry (* need hole freshness *)
+      then show ?thesis
+      proof (cases "diverge Q")
+        case True
+        then have "diverge M[Q <- x]" 
+          using div_ctx[of Q hole "E[Q <- x]"] \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close>
+        then show ?thesis by simp
+      next
+        case False
+        obtain N' where "normal N'" and "N \<rightarrow>* N'" and "Q \<rightarrow>* N'" sorry
+        then have "M[N <- x] \<rightarrow>* E[N <- x][N' <- hole]" and "M[Q <- x] \<rightarrow>* E[Q <- x][N' <- x]" sorry
+        then obtain m where "E[N <- x][N' <- hole] \<rightarrow>[m] P" and "m \<le> k" 
+          and "count_term x E[Q <- x][N' <- hole] = count_term x M - 1" sorry
+        have "E[Q <- x][N' <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][N' <- hole] \<rightarrow>[m] M'[Q <- x])"
+          using lex(2)[of "E[N' <- hole]"] sorry
+        then show ?thesis sorry
+      qed
     next
       case False
-      then have "\<not> blocked x M"
-        unfolding blocked_def sorry
-      then show ?thesis
-        sorry
+      then obtain M'' where "M \<rightarrow> M''" and "P' = M''[N <- x]"
+        using step(2) b3[of M N x P'] by auto
+      then have "M''[N <- x] \<rightarrow>[k'] P"
+        using step(3) by simp
+      then have "diverge M''[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M''[Q <- x] \<rightarrow>[m] M'[Q <- x])"
+        using step(1) lex.prems lex(1)[of k' M''] by simp
+      moreover have "M[Q <- x] \<rightarrow> M''[Q <- x]"
+        using \<open>M \<rightarrow> M''\<close> beta_usubst sorry
+      ultimately show ?thesis
+        using diverge.intros[of "M[Q <- x]" "M''[Q <- x]"] 
+        using betas.step[of "M[Q <- x]" "M''[Q <- x]" _ _]
+        by blast
     qed
   qed
 qed
@@ -1079,7 +1124,7 @@ inductive b5_prop :: "'var::var term \<Rightarrow> bool" where
 
 lemma b5:
   assumes "M[N <- z] = V" and "val V" and "N \<greatersim> P"
-  shows "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>*[n] W \<and> b5_prop W)"
+  shows "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>* W \<and> b5_prop W)"
   sorry
 
 lemma b6:
