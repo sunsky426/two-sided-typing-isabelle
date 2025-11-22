@@ -298,9 +298,9 @@ inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 | "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (App E N)"
 | "eval_ctx hole E \<Longrightarrow> eval_ctx hole (Succ E)"
 | "eval_ctx hole E \<Longrightarrow> eval_ctx hole (Pred E)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow>eval_ctx hole (Pair E N)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (Pair E N)"
 | "val V \<Longrightarrow> eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term V \<Longrightarrow> eval_ctx hole (Pair V E)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (Let x E N)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> hole \<notin> dset xy \<Longrightarrow> eval_ctx hole (Let xy E N)"
 | "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> hole \<notin> FVars_term P \<Longrightarrow> eval_ctx hole (If E N P)"
 
 binder_inductive (no_auto_equiv) eval_ctx
@@ -309,7 +309,7 @@ binder_inductive (no_auto_equiv) eval_ctx
 section \<open>B2\<close>
 
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
-  "blocked z M = (\<exists> hole E. (eval_ctx hole E) \<and> (M = E[Var z <- hole]))"
+  "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]))"
 
 lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> eval_ctx y E[Var y <- x]"
 (*
@@ -375,6 +375,9 @@ lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Lon
   subgoal by (subst usubst_usubst) (auto dest: eval_ctxt_FVars_term)
   done
 
+lemma dset_alt: "dset xy = {dfst xy, dsnd xy}"
+  by transfer auto
+
 lemma blocked_inductive: 
   "blocked z (Var z)"
   "blocked z N \<Longrightarrow> blocked z (App (Fix f x M) N)"
@@ -383,7 +386,7 @@ lemma blocked_inductive:
   "blocked z M \<Longrightarrow> blocked z (Pred M)"
   "blocked z M \<Longrightarrow> blocked z (Pair M N)"
   "val V \<Longrightarrow> blocked z M \<Longrightarrow> blocked z (Pair V M)"
-  "blocked z M \<Longrightarrow> blocked z (Let xy M N)"
+  "blocked z M \<Longrightarrow> z \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term M = {} \<Longrightarrow> blocked z (Let xy M N)"
   "blocked z M \<Longrightarrow> blocked z (If M N P)"
   apply(simp_all add: blocked_def)
   using eval_ctx.intros(1) apply fastforce
@@ -406,7 +409,93 @@ proof (erule exE)+
     using \<open>eval_ctx hole' E'\<close> \<open>App (Fix f x M) N = E'[Var z <- hole']\<close>
     by auto
 qed
-  sorry
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="App E N"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+      apply (rule exI[of _ "App E[Var hole' <- hole] N"])
+        apply (auto intro!: eval_ctx.intros(3) dest: eval_subst[of hole E hole'] simp: subst_subst)
+        done
+      done
+    done
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="Succ E"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+      apply (rule exI[of _ "Succ (E[Var hole' <- hole])"])
+        apply (auto intro!: eval_ctx.intros(4) dest: eval_subst[of hole E hole'] simp: subst_subst)
+        done
+      done
+    done
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="Pred E"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+      apply (rule exI[of _ "Pred (E[Var hole' <- hole])"])
+        apply (auto intro!: eval_ctx.intros(5) dest: eval_subst[of hole E hole'] simp: subst_subst)
+        done
+      done
+    done
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="Pair E N"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+      apply (rule exI[of _ "Pair (E[Var hole' <- hole]) N"])
+        apply (auto intro!: eval_ctx.intros(6) dest: eval_subst[of hole E hole'] simp: subst_subst)
+        done
+      done
+    done
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="Pair V E"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+        apply (rule exI[of _ "Pair V (E[Var hole' <- hole])"])
+        apply (auto intro!: eval_ctx.intros(7) dest: eval_subst[of hole E hole'] simp: subst_subst)
+        done
+      done
+    done
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="Pair E (Pair N (Pair (Var (dfst xy)) (Var (dsnd xy))))"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+        apply (rule exI[of _ "Let xy (E[Var hole' <- hole]) N"])
+        apply (auto intro!: eval_ctx.intros(8) dest: eval_subst[of hole E hole'] simp: subst_subst dset_alt)
+        apply (subst usubst_simps)
+        apply (auto simp: dset_alt FVars_usubst term.permute_id subst_subst dest: eval_subst[of hole E hole'] intro!: exI[of _ id])
+        done
+      done
+    done
+  subgoal
+    apply (elim exE conjE)
+    subgoal for hole E
+      using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="If E N P"]
+      apply (elim exE)
+      subgoal for hole'
+      apply (rule exI[of _ hole'])
+        apply (rule exI[of _ "If (E[Var hole' <- hole]) N P"])
+        apply (auto intro!: eval_ctx.intros(9) dest: eval_subst[of hole E hole'] simp: subst_subst)
+        done
+      done
+    done
+  done
 
 inductive normal :: "'var::var term \<Rightarrow> bool" where
   "\<not>(\<exists>N'. N \<rightarrow> N') \<Longrightarrow> normal N"
@@ -414,15 +503,12 @@ inductive normal :: "'var::var term \<Rightarrow> bool" where
 inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
   "\<exists>m n N. \<not>(\<exists>N'. N \<rightarrow> N') \<and> ((P \<rightarrow>*[n] N) \<longrightarrow> (Q \<rightarrow>*[m] N)) \<Longrightarrow> P \<greatersim> Q"
 
-thm term.subst
-
 lemma subst_Zero_inversion:
-  assumes "M[t <- x] = Zero" and "\<not> blocked x M"
+  assumes "M[t <- x] = Zero" and "\<not> M = Var x"
   shows "M = Zero"
   using assms
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
-  using eval_ctx.intros(1) apply fastforce
+  apply(auto simp add:eval_ctx.intros Int_Un_distrib split:if_splits)
   done
 
 lemma subst_Var_inversion:
@@ -430,41 +516,40 @@ lemma subst_Var_inversion:
   shows "M = Var y"
   using assms
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-          apply(auto simp add:eval_ctx.intros blocked_inductive Int_Un_distrib split:if_splits)
+          apply(auto simp add:eval_ctx.intros Int_Un_distrib split:if_splits)
   done
 
 lemma subst_Succ_inversion: 
-  assumes "M[t <- x] = Succ N" and "\<not> blocked x M"
+  assumes "M[t <- x] = Succ N" and "\<not> M = Var x"
   obtains N' where "M = Succ N'" and "N = N'[t <- x]"
   using assms
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:eval_ctx.intros blocked_inductive Int_Un_distrib split:if_splits)
+  apply(auto simp add:eval_ctx.intros Int_Un_distrib split:if_splits)
   done
 
 lemma subst_Pred_inversion: 
-  assumes "M[t <- x] = Pred N" and "\<not> blocked x M"
+  assumes "M[t <- x] = Pred N" and "\<not> M = Var x"
   obtains N' where "M = Pred N'" and "N = N'[t <- x]"
   using assms
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
-  using eval_ctx.intros(1) apply fastforce
+  apply(auto simp add:eval_ctx.intros Int_Un_distrib split:if_splits)
   done
 
 lemma subst_App_inversion:
-  assumes "M[t <- x] = App R Q" and "\<not> blocked x M"
+  assumes "M[t <- x] = App R Q" and "\<not> M = Var x"
   obtains R' Q' where "M = App R' Q'" and "R'[t <- x] = R" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
   apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
-  apply(auto simp add:eval_ctx.intros blocked_def Int_Un_distrib split:if_splits)
+  apply(auto simp add:eval_ctx.intros Int_Un_distrib split:if_splits)
   using eval_ctx.intros(1) apply fastforce
   sorry
   done
 
 lemma subst_Pair_inversion:
-  assumes "M[t <- x] = Pair Q1 Q2" and "\<not> blocked x M"
+  assumes "M[t <- x] = Pair Q1 Q2" and "\<not> M = Var x"
   obtains Q1' Q2' where "M = Pair Q1' Q2'" and "Q1'[t <- x] = Q1" and "Q2'[t <- x] = Q2"
   using assms
   apply(atomize_elim)
@@ -474,7 +559,7 @@ lemma subst_Pair_inversion:
   done
 
 lemma subst_If_inversion:
-  assumes "M[t <- x] = If Q0 Q1 Q2" and "\<not> blocked x M"
+  assumes "M[t <- x] = If Q0 Q1 Q2" and "\<not> M = Var x"
   obtains Q0' Q1' Q2'
   where "M = If Q0' Q1' Q2'" and "Q0'[t <- x] = Q0" and "Q1'[t <- x] = Q1" and "Q2'[t <- x] = Q2"
   using assms
@@ -498,7 +583,7 @@ lemma subst_Fix_inversion:
   done
 
 lemma subst_Let_inversion:
-  assumes "M[t <- x] = Let xy P Q" and "\<not> blocked x M"
+  assumes "M[t <- x] = Let xy P Q" and "\<not> M = Var x"
   assumes "x \<notin> dset xy" and "FVars_term t \<inter> dset xy = {}"
   obtains P' Q' where "M = Let xy P' Q'" and "P'[t <- x] = P" and "Q'[t <- x] = Q"
   using assms
@@ -515,7 +600,7 @@ next
   case (2 m')
   obtain n' where "n = Succ n'" and "n'[N <- z] = m'" and "\<not> blocked z n'"
     using subst_Succ_inversion
-    by (metis "2.prems"(1,2) blocked_inductive(4))
+    by (metis "2.prems"(1,2) blocked_inductive(1,4))
   then have "n' = m'" using "2.IH"[of n'] by auto 
   then show ?case
     by (simp add: \<open>n = Succ n'\<close>)
@@ -536,7 +621,7 @@ next
 next
   case (3 V1 V2 V')
   obtain V1' V2' where "V' = Pair V1' V2'" and "V1'[N <- z] = V1" and "V2'[N <- z] = V2"
-    using \<open>\<not> blocked z V'\<close>  subst_Pair_inversion 3 by blast
+    using \<open>\<not> blocked z V'\<close>  subst_Pair_inversion 3 blocked_inductive(1) by blast
   then have "\<not> blocked z V1'"
     using blocked_inductive \<open>\<not> blocked z V'\<close> by metis
   then have "val V1'" using \<open>V1'[N <- z] = V1\<close> "3.IH"(1)[of V1'] by auto
@@ -595,7 +680,7 @@ next
   have "M[N <- z] = App (Fix f a Q) (E[P <- hole])" 
     using "2" by auto
   then obtain F R where "M = App F R" and "F[N <- z] = Fix f a Q" and "R[N <- z] = E[P <- hole]"
-    using subst_App_inversion[of M N z "Fix f a Q" "E[P <- hole]"] "2"(9) by auto
+    using subst_App_inversion[of M N z "Fix f a Q" "E[P <- hole]"] "2"(9) blocked_inductive(1) by blast
   moreover have "\<not> blocked z F" using "2"(9) blocked_inductive(3) \<open>M = App F R\<close> by auto
   ultimately obtain Q' where "M = App (Fix f a Q') R" and "Q'[N <- z] = Q"
      using subst_Fix_inversion[of F N z f a Q] 2 blocked_inductive(1)[of z] by auto
@@ -616,7 +701,7 @@ next
   case (3 x E Q p M)
   have "M[N <- z] = App (E[P <- x]) Q" using 3 by simp
   then obtain R Q' where "M = App R Q'" and "R[N <- z] = E[P <- x]" and "Q'[N <- z] = Q"
-    using subst_App_inversion 3 by metis
+    using subst_App_inversion 3 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z R"
     using \<open>M = App R Q'\<close> eval_ctx.intros(3) blocked_def blocked_inductive(3) by blast
   ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- x]"
@@ -631,7 +716,7 @@ next
   case (4 x E p M)
   have "M[N <- z] = Succ(E[P <- x])" by (simp add: 4)
   then obtain Q where "M = Succ Q" and "Q[N <- z] = E[P <- x]" using subst_Succ_inversion 4
-    by metis
+    blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using \<open>M = Succ Q\<close> eval_ctx.intros(4) blocked_def by (metis usubst_simps(2))
   ultimately
@@ -644,7 +729,7 @@ next
   case (5 x E p M)
   have "M[N <- z] = Pred(E[P <- x])" by (simp add: 5)
   then obtain Q where "M = Pred Q" and "Q[N <- z] = E[P <- x]" using subst_Pred_inversion 5
-    by metis
+    blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using \<open>M = Pred Q\<close> eval_ctx.intros(5) blocked_def by (metis usubst_simps(3))
   ultimately
@@ -658,7 +743,7 @@ next
   have "M[N <- z] = Pair (E[P <- x]) Q"
     by (simp add: 6)
   then obtain Q1 Q2 where "M = Pair Q1 Q2" and "E[P <- x] = Q1[N <- z]" and "Q = Q2[N <- z]"
-    using subst_Pair_inversion 6 by metis
+    using subst_Pair_inversion 6 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q1" 
     using blocked_inductive \<open>M = Pair Q1 Q2\<close> by metis
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q1 = E'[P' <- x]"
@@ -674,7 +759,7 @@ next
   have "M[N <- z] = Pair V E[P <- x]"
     by(simp add: 7)
   then obtain V' Q where "M = Pair V' Q" and "V = V'[N <- z]" and "E[P <- x] = Q[N <- z]"
-    using subst_Pair_inversion 7 by metis
+    using subst_Pair_inversion 7 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using blocked_inductive(7) \<open>M = Pair V' Q\<close> subst_val_inversion
     using "7"(1) blocked_inductive(6) calculation(2) by blast
@@ -692,10 +777,12 @@ next
     using "8" usubst_simps(9)[of hole x P E Q]
     by fastforce
   then obtain R Q' where "M = Let x R Q'" and "Q'[N <- z] = Q" and "R[N <- z] = E[P <- hole]"
-    using subst_Let_inversion[of M N z x "E[P <- hole]" Q] "8"(9) "8"(1) by blast
-  moreover have "\<not> blocked z R" using "8"(9) blocked_inductive \<open>M = Let x R Q'\<close> by metis
+    using subst_Let_inversion[of M N z x "E[P <- hole]" Q] "8"(9,10) "8"(1) blocked_inductive(1)[of z]
+    by blast
+  moreover have "\<not> blocked z R" using "8"(1,9,10) blocked_inductive \<open>M = Let x R Q'\<close>
+    by fastforce
   ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
-    using 8(3)[of "(z, N, R, E, hole, P)" R] 8(8)
+    using 8(3)[of "(z, N, R, E, hole, P)" R] 8(8,9)
     by (metis Un_iff term.set(9))
   moreover have "hole \<notin> FVars_term Q'"
     using 8 \<open>hole \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Let x R Q'\<close>
@@ -717,7 +804,7 @@ next
   have "M[N <- z] = If E[P <- x] Q1 Q2"
     by(simp add: 9)
   then obtain Q0 Q1' Q2' where "M = If Q0 Q1' Q2'" and "E[P <- x] = Q0[N <- z]" and "Q1 = Q1'[N <- z]" and "Q2 = Q2'[N <- z]"
-    using subst_If_inversion 9 by metis
+    using subst_If_inversion 9 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q0"
     using blocked_inductive(9) \<open>M = If Q0 Q1' Q2'\<close> by auto
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q0 = E'[P' <- x]"
@@ -787,7 +874,7 @@ next
       where "M = If Q0 Q1 Q2" and "Q0[N <- z] = Zero" and "Q1[N <- z] = P2" and "Q2[N <- z] = Q"  and "\<not> blocked z Q0"
       using  \<open>\<not> blocked z M\<close> subst_If_inversion[of M N z Zero P2 Q] blocked_inductive by metis
     then have "Q0 = Zero"
-      using subst_Zero_inversion by blast
+      using subst_Zero_inversion blocked_inductive(1) by blast
     then show ?thesis
       using \<open>M = term.If Q0 Q1 Q2\<close> \<open>Q1[N <- z] = P2\<close> beta.Ifz by auto
   next
@@ -808,7 +895,7 @@ next
     then obtain P' Q' where "M = Let xy P' Q'" and "P'[N <- z] = Pair V W" and "Q'[N <- z] = Q" and "\<not> blocked z P'"
       using \<open>\<not> blocked z M\<close> subst_Let_inversion[of M N z xy "Pair V W" Q] blocked_inductive(8) sorry
     then obtain V' W' where "P' = Pair V' W'" and "V'[N <- z] = V" and "W' [N <- z] = W"
-      using subst_Pair_inversion by blast
+      using subst_Pair_inversion  blocked_inductive(1) by blast
     have "(Q'[V' <- dfst xy][W' <- dsnd xy])[N <- z] = P2"
       using \<open>P2 = Q[V <- dfst xy][W <- dsnd xy]\<close> usubst_usubst
       sorry
@@ -820,8 +907,8 @@ next
     have "M[N <- z] = Pred Zero"
       by (simp add: "1"(2) local.PredZ(1))
     then obtain Q where "M = Pred Q" and "\<not> blocked z Q" and "Q[N <- z] = Zero" using subst_Pred_inversion
-      by (metis "1"(4) blocked_inductive(5))
-    then have "Q = Zero" using \<open>Q[N <- z] = Zero\<close> \<open>\<not> blocked z Q\<close> subst_Zero_inversion by auto
+      by (metis "1"(4) blocked_inductive(1,5))
+    then have "Q = Zero" using \<open>Q[N <- z] = Zero\<close> \<open>\<not> blocked z Q\<close> subst_Zero_inversion blocked_inductive(1) by auto
     have "(Zero)[N <- z] = P2" using \<open>P2 = Zero\<close> by simp
     then show ?thesis
       using \<open>M = Pred Q\<close> \<open>Q = Zero\<close> assms(3) local.PredZ(1) by auto
@@ -830,9 +917,9 @@ next
     have "M[N <- z] = Pred (Succ P2)"
       by (simp add: "1"(2) local.PredS(1))
     then obtain Q where "M = Pred Q" and "\<not> blocked z Q" and "Q[N <- z] = Succ P2" using subst_Pred_inversion
-      by (metis "1"(4) blocked_inductive(5))
+      by (metis "1"(4) blocked_inductive(1,5))
     then obtain Q' where "Q = Succ Q'" and "Q'[N <- z] = P2"
-      using subst_Succ_inversion by blast
+      using subst_Succ_inversion blocked_inductive(1) by blast
     then show ?thesis
       using \<open>M = Pred Q\<close> beta.PredS by auto
   next
@@ -840,7 +927,7 @@ next
     have "M[N <- z] = App (Fix f x Q) V"
       by (simp add: "1"(2) local.FixBeta)
     then obtain Q' V' where "M = App (Fix f x Q') V'" and "Q'[N <- z] = Q" and "V'[N <- z] = V"
-      using  \<open>\<not> blocked z M\<close> subst_Fix_inversion subst_App_inversion blocked_inductive(3) sorry
+      using  \<open>\<not> blocked z M\<close> subst_Fix_inversion subst_App_inversion blocked_inductive(1,3) sorry
     let ?M' = "Q'[V' <- x][Fix f x Q' <- f]"
     have "?M'[N <- z] = P2" 
       using \<open>P2 = Q[V <- x][Fix f x Q <- f]\<close> usubst_usubst[of f z N "Q[V' <- x]" "Fix f x Q"]
@@ -853,7 +940,7 @@ next
   then have "M[N <- z] = App (Fix f x Q) E[P1 <- hole]"
    using subst_idle usubst_simps(6) by auto
   then obtain F R where "M = App F R" and "R[N <- z] = E[P1 <- hole]" and "F[N <- z] = Fix f x Q"
-    using \<open>\<not> blocked z M\<close> subst_App_inversion by blast
+    using \<open>\<not> blocked z M\<close> subst_App_inversion  blocked_inductive(1) by blast
   then have "\<not> blocked z F" using blocked_inductive \<open>\<not> blocked z M\<close> by blast
   then obtain Q' where "F = Fix f x Q'" and "Q'[N <- z] = Q"
     using \<open>F[N <- z] = Fix f x Q\<close> 2(1) subst_Fix_inversion[of F N z f x Q] blocked_inductive(1)[of z] by auto
@@ -869,7 +956,7 @@ next
   then have "M[N <- z] = App E[P1 <- hole] Q"
    using subst_idle usubst_simps(6) by auto
   then obtain R Q' where "M = App R Q'" and "R[N <- z] = E[P1 <- hole]" and "Q'[N <- z] = Q"
-    using \<open>\<not> blocked z M\<close> subst_App_inversion by blast
+    using \<open>\<not> blocked z M\<close> subst_App_inversion blocked_inductive(1) by blast
   then have "\<not> blocked z R" using blocked_inductive \<open>\<not> blocked z M\<close> by blast
   then obtain R' where "R \<rightarrow> R'" and "R'[N <- z] = E[P2 <- hole]" 
     using \<open>P1 \<rightarrow> P2\<close> "3"(2)[where M = R] \<open>R[N <- z] = E[P1 <- hole]\<close> by auto
@@ -880,7 +967,7 @@ next
 next
   case (4 hole E p M)
   obtain Q where "M = Succ Q" and "Q[N <- z] = E[P1 <- hole]"
-    using \<open>M[N <- z] = (Succ E)[P1 <- hole]\<close> \<open>\<not> blocked z M\<close> subst_Succ_inversion by force
+    using \<open>M[N <- z] = (Succ E)[P1 <- hole]\<close> \<open>\<not> blocked z M\<close> subst_Succ_inversion blocked_inductive(1) by force
   moreover have "\<not> blocked z Q" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Succ Q\<close> by blast
   ultimately obtain Q' where "Q \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]"
     using \<open>P1 \<rightarrow> P2\<close> "4"(2)[where M = Q] by auto
@@ -891,7 +978,7 @@ next
 next
   case (5 hole E p M)
   obtain Q where "M = Pred Q" and "Q[N <- z] = E[P1 <- hole]"
-    using \<open>M[N <- z] = (Pred E)[P1 <- hole]\<close> \<open>\<not> blocked z M\<close> subst_Pred_inversion by force
+    using \<open>M[N <- z] = (Pred E)[P1 <- hole]\<close> \<open>\<not> blocked z M\<close> subst_Pred_inversion blocked_inductive(1) by force
   moreover have "\<not> blocked z Q" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Pred Q\<close> by blast
   ultimately obtain Q' where "Q \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]" 
     using \<open>P1 \<rightarrow> P2\<close> "5"(2)[of _ Q] by auto
@@ -904,8 +991,8 @@ next
   have "M[N <- z] = (Pair E[P1 <- hole] Q2)"
     by (simp add: "6"(3, 5))
   then obtain Q1' Q2' where "M = Pair Q1' Q2'" and "Q1'[N <- z] = E[P1 <- hole]" and "Q2'[N <- z] = Q2"
-    using \<open>\<not> blocked z M\<close> subst_Pair_inversion by blast
-  moreover have "\<not> blocked z Q1'" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Pair Q1' Q2'\<close> by metis
+    using \<open>\<not> blocked z M\<close> subst_Pair_inversion blocked_inductive(1) by blast
+  moreover have "\<not> blocked z Q1'" using blocked_inductive(6) \<open>\<not> blocked z M\<close> \<open>M = Pair Q1' Q2'\<close> by metis
   ultimately obtain Q' where "Q1' \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]" 
     using \<open>P1 \<rightarrow> P2\<close> "6"(2)[of _ Q1'] by blast
   have "(Pair Q' Q2')[N <- z] = (Pair E Q2)[P2 <- hole]"
@@ -917,8 +1004,8 @@ next
   have "M[N <- z] = (Pair V E[P1 <- hole])"
     using "7" by simp
   then obtain V' Q where "M = Pair V' Q" and "V'[N <- z] = V" and "Q[N <- z] = E[P1 <- hole]"
-    using \<open>\<not> blocked z M\<close> subst_Pair_inversion[of M N z V "E[P1 <- hole]"] by auto
-  then have "val V'" using 7(1) \<open>\<not> blocked z M\<close> blocked_inductive subst_val_inversion
+    using \<open>\<not> blocked z M\<close> subst_Pair_inversion[of M N z V "E[P1 <- hole]"] blocked_inductive(1) by blast
+  then have "val V'" using 7(1) \<open>\<not> blocked z M\<close> blocked_inductive(6) subst_val_inversion
     by metis
   then have "\<not> blocked z Q" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = Pair V' Q\<close> by metis
   then obtain Q' where "Q \<rightarrow> Q'" and "Q'[N <- z] = E[P2 <- hole]"
@@ -932,8 +1019,9 @@ next
   have "M[N <- z] = Let xy E[P1 <- hole] Q"
    using usubst_simps(9)[of hole xy P1 E Q] subst_idle 8 by fastforce
   then obtain R Q' where "M = Let xy R Q'" and "R[N <- z] = E[P1 <- hole]" and "Q'[N <- z] = Q"
-    using \<open>\<not> blocked z M\<close> subst_Let_inversion 8(1) by blast
-  then have "\<not> blocked z R" using blocked_inductive(8) \<open>\<not> blocked z M\<close> by blast
+    using \<open>\<not> blocked z M\<close> subst_Let_inversion 8(1) blocked_inductive(1) by blast
+  then have "\<not> blocked z R" using blocked_inductive(1,8) \<open>\<not> blocked z M\<close> 8(1,4,5)
+    by (fastforce simp: Int_Un_distrib)
   then obtain R' where "R \<rightarrow> R'" and "R'[N <- z] = E[P2 <- hole]"
     using \<open>P1 \<rightarrow> P2\<close> "8"(3)[of _  R] \<open>R[N <- z] = E[P1 <- hole]\<close> by auto
   have "dset xy \<inter> FVars_term R' = {}" and "dset xy \<inter> FVars_term Q' = {}"
@@ -950,7 +1038,7 @@ next
     by (simp add: 9)
   then obtain Q0' Q1' Q2' 
     where "M = If Q0' Q1' Q2'" and "Q0'[N <- z] = E[P1 <- hole]" and "Q1'[N <- z] = Q1" and "Q2'[N <- z] = Q2"
-    using \<open>\<not> blocked z M\<close> subst_If_inversion[of M N z "E[P1 <- hole]" Q1 Q2] by auto
+    using \<open>\<not> blocked z M\<close> subst_If_inversion[of M N z "E[P1 <- hole]" Q1 Q2] blocked_inductive(1) by blast
   then have "\<not> blocked z Q0'" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = If Q0' Q1' Q2'\<close> by metis
   then obtain Q where "Q0' \<rightarrow> Q" and "Q[N <- z] = E[P2 <- hole]"
     using \<open>P1 \<rightarrow> P2\<close> \<open>Q0'[N <- z] = E[P1 <- hole]\<close> 9(2)[of _ Q0'] by blast
