@@ -146,7 +146,7 @@ next
   then show ?case
     by (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
 qed (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
-  
+
 binder_inductive (no_auto_equiv) val
   sorry (*TODO: Dmitriy*)
 
@@ -309,6 +309,15 @@ inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 binder_inductive (no_auto_equiv) eval_ctx
   sorry
 
+definition normal :: "'var::var term \<Rightarrow> bool" where
+  "normal N = (\<not>(\<exists>N'. N \<rightarrow> N'))"
+
+inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
+  "\<exists>N. normal N \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
+
+lemma diverge_or_normalize: "diverge M \<or> (\<exists>M' m. M \<rightarrow>[m] M' \<and> normal M')"
+  sorry
+
 section \<open>B2\<close>
 
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
@@ -410,14 +419,6 @@ proof (erule exE)+
     by auto
 qed
   sorry
-
-inductive normal :: "'var::var term \<Rightarrow> bool" where
-  "\<not>(\<exists>N'. N \<rightarrow> N') \<Longrightarrow> normal N"
-
-inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
-  "\<exists>N. normal N \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
-
-thm term.subst
 
 lemma subst_Zero_inversion:
   assumes "M[t <- x] = Zero" and "\<not> blocked x M"
