@@ -311,12 +311,15 @@ binder_inductive (no_auto_equiv) eval_ctx
   sorry
 
 definition normal :: "'var::var term \<Rightarrow> bool" where
-  "normal N = (\<not>(\<exists>N'. N \<rightarrow> N'))"
+  "normal N \<equiv> (\<not>(\<exists>N'. N \<rightarrow> N'))"
 
-inductive less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<greatersim>" 90) where
-  "\<exists>N. normal N \<and> ((P \<rightarrow>* N) \<longrightarrow> (Q \<rightarrow>* N)) \<Longrightarrow> P \<greatersim> Q"
+definition normalizes :: "'var::var term \<Rightarrow> bool" where
+  "normalizes M \<equiv> \<exists>N. normal N \<and> M \<rightarrow>* N"
 
-lemma diverge_or_normalize: "diverge M \<or> (\<exists>M' m. M \<rightarrow>[m] M' \<and> normal M')"
+definition less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<lesssim>" 90) where
+  "P \<lesssim> Q \<equiv> normalizes P \<longrightarrow> (\<exists>N. normal N \<and> P \<rightarrow>* N \<and> Q \<rightarrow>* N)"
+
+lemma diverge_or_normalize: "diverge M \<or> normalizes M"
   sorry
 
 section \<open>B2\<close>
@@ -1041,7 +1044,7 @@ next
     using \<open>P1 \<rightarrow> P2\<close> "8"(3)[of _  R] \<open>R[N <- z] = E[P1 <- hole]\<close> by auto
   thm FVars_subst
   have "dset xy \<inter> FVars E[P2 <- hole] = {}"
-    using 8(1) FVars_subst[of E P2 hole] by auto
+    using 8(1) FVars_subst[of "Var(hole:=P2)" E] by auto
   then have "dset xy \<inter> FVars R' = {}"
     using FVars_subst_inversion[of R' N z] FVars_subst_inversion[of Q' N z]
     using 8(1) \<open>R'[N <- z] = E[P2 <- hole]\<close> \<open>Q'[N <- z] = Q\<close>
@@ -1148,6 +1151,12 @@ lemma count_term_simps[simp]:
     set1_term_pre_def set2_term_pre_def set3_term_pre_def set4_term_pre_def
     noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
 
+lemma eval_ctx_beta: "eval_ctx x E \<Longrightarrow> M \<rightarrow>* N \<Longrightarrow> E[M <- x] \<rightarrow>* E[N <- x]"
+  sorry
+
+lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightarrow> eval_ctx x E[Q <- y]"
+  sorry
+
 lemma my_induct[case_names lex]:
   assumes "\<And>n N. (\<And>m M. m < n \<Longrightarrow> P m x M) \<Longrightarrow> (\<And>M. count_term x M < count_term x N \<Longrightarrow> P n x M) \<Longrightarrow> P n x N"
   shows "P (n :: nat) x (N :: 'a :: var term)"
@@ -1156,7 +1165,7 @@ lemma my_induct[case_names lex]:
   done
 
 lemma b4:
-  assumes "M[N <- x] \<rightarrow>[k] P" and "normal P" and "N \<greatersim> Q"
+  assumes "M[N <- x] \<rightarrow>[k] P" and "normal P" and "Q \<lesssim> N"
   shows "diverge M[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>[m] M'[Q <- x])"
   using assms
 proof (induct k x M rule: my_induct)
@@ -1175,21 +1184,28 @@ proof (induct k x M rule: my_induct)
       case True
       then obtain hole E where "eval_ctx hole E" and "M = E[Var x <- hole]" 
           using blocked_def[of x M] by auto
-      then have "M[Q <- x] = E[Q <- x][Q <- hole]"
-          using usubst_usubst[of hole x Q E "Var x"] sorry (* need hole freshness *)
-      then show ?thesis
+      then have "M[N <- x] = E[N <- x][N <- hole]" and "M[Q <- x] = E[Q <- x][Q <- hole]"
+        using usubst_usubst[of hole x N E "Var x"] usubst_usubst[of hole x Q E "Var x"]
+        sorry (* need hole freshness *)
+      show ?thesis
       proof (cases "diverge Q")
         case True
         then have "diverge M[Q <- x]" 
           using div_ctx[of Q hole "E[Q <- x]"] \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close>
+          sorry (* need eval_ctx hole E[Q <- x] *)
         then show ?thesis by simp
       next
         case False
-        obtain N' where "normal N'" and "N \<rightarrow>* N'" and "Q \<rightarrow>* N'" sorry
-        then have "M[N <- x] \<rightarrow>* E[N <- x][N' <- hole]" and "M[Q <- x] \<rightarrow>* E[Q <- x][N' <- x]" sorry
+        then obtain N' where "normal N'" and "N \<rightarrow>* N'" and "Q \<rightarrow>* N'"
+          using less_defined_def \<open>Q \<lesssim> N\<close> diverge_or_normalize[of Q] by auto
+        then have "M[N <- x] \<rightarrow>* E[N <- x][N' <- hole]" and "M[Q <- x] \<rightarrow>* E[Q <- x][N' <- hole]"
+          using \<open>M[N <- x] = E[N <- x][N <- hole]\<close> \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close> 
+          using eval_ctx_subst[of hole E x N] eval_ctx_subst[of hole E x Q]
+          using eval_ctx_beta[of hole "E[N <- x]" N N'] eval_ctx_beta[of hole "E[Q <- x]" Q N']
+          sorry (*need hole freshness*)
         then obtain m where "E[N <- x][N' <- hole] \<rightarrow>[m] P" and "m \<le> k" 
           and "count_term x E[Q <- x][N' <- hole] = count_term x M - 1" sorry
-        have "E[Q <- x][N' <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][N' <- hole] \<rightarrow>[m] M'[Q <- x])"
+        then have "E[Q <- x][N' <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][N' <- hole] \<rightarrow>[m] M'[Q <- x])"
           using lex(2)[of "E[N' <- hole]"] sorry
         then show ?thesis sorry
       qed
@@ -1202,9 +1218,9 @@ proof (induct k x M rule: my_induct)
       then have "diverge M''[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M''[Q <- x] \<rightarrow>[m] M'[Q <- x])"
         using step(1) lex.prems lex(1)[of k' M''] by simp
       moreover have "M[Q <- x] \<rightarrow> M''[Q <- x]"
-        using \<open>M \<rightarrow> M''\<close> beta_usubst sorry
+        using \<open>M \<rightarrow> M''\<close> beta_usubst sorry (*maybe make use of M[N <- x] \<rightarrow> P' = M''[N <- x]*)
       ultimately show ?thesis
-        using diverge.intros[of "M[Q <- x]" "M''[Q <- x]"] 
+        using diverge.intros[of "M[Q <- x]" "M''[Q <- x]"]
         using betas.step[of "M[Q <- x]" "M''[Q <- x]" _ _]
         by blast
     qed
