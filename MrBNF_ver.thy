@@ -47,7 +47,7 @@ mrbnf "'a :: var dpair"
     by transfer auto
   done
 
-binder_datatype 'var "term" = 
+binder_datatype (FVars: 'var) "term" = 
   Zero
   | Succ "'var term"
   | Pred "'var term"
@@ -57,14 +57,15 @@ binder_datatype 'var "term" =
   | Fix f::'var x::'var M::"'var term" binds f x in M
   | Pair "'var term" "'var term"
   | Let "(xy::'var) dpair" M::"'var term" N::"'var term" binds xy in N
+  for subst: subst
 
 definition usubst ("_[_ <- _]" [1000, 49, 49] 1000) where
-  "usubst t u x = tvsubst_term (Var(x := u)) t"
+  "usubst t u x = subst (Var(x := u)) t"
 
 lemma SSupp_term_fun_upd: "SSupp Var (Var(x :: 'var :: var := u)) \<subseteq> {x}"
   by (auto simp: SSupp_def)
 
-lemma IImsupp_term_fun_upd: "IImsupp Var FVars_term (Var(x :: 'var :: var := u)) \<subseteq> {x} \<union> FVars_term u"
+lemma IImsupp_term_fun_upd: "IImsupp Var FVars (Var(x :: 'var :: var := u)) \<subseteq> {x} \<union> FVars u"
   by (auto simp: IImsupp_def SSupp_def)
 
 lemma usubst_simps[simp]:
@@ -74,10 +75,10 @@ lemma usubst_simps[simp]:
   "usubst (If t1 t2 t3) u y = If (usubst t1 u y) (usubst t2 u y) (usubst t3 u y)"
   "usubst (Var x) u y = (if x = y then u else Var x)"
   "usubst (App t1 t2) u y = App (usubst t1 u y) (usubst t2 u y)"
-  "f \<noteq> y \<Longrightarrow> f \<notin> FVars_term u \<Longrightarrow> x \<noteq> y \<Longrightarrow> x \<notin> FVars_term u \<Longrightarrow>
+  "f \<noteq> y \<Longrightarrow> f \<notin> FVars u \<Longrightarrow> x \<noteq> y \<Longrightarrow> x \<notin> FVars u \<Longrightarrow>
    usubst (Fix f x t) u y = Fix f x (usubst t u y)"
   "usubst (Pair t1 t2) u y = Pair (usubst t1 u y) (usubst t2 u y)"
-  "y \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term u = {} \<Longrightarrow> dset xy \<inter> FVars_term t1 = {} \<Longrightarrow>
+  "y \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars u = {} \<Longrightarrow> dset xy \<inter> FVars t1 = {} \<Longrightarrow>
   usubst (term.Let xy t1 t2) u y = term.Let xy (usubst t1 u y) (usubst t2 u y)"
   unfolding usubst_def using IImsupp_term_fun_upd SSupp_term_fun_upd
   by (subst term.subst; fastforce)+
@@ -172,18 +173,18 @@ lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV 
 (\<And>x1 x2 x3 \<rho>. dset x1 \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.Let x1 x2 x3) \<rho>) \<Longrightarrow> \<forall>\<rho>. P t \<rho>"
   by (rule term.strong_induct) auto
 
-lemma fresh_subst[simp]: "x \<notin> FVars_term t \<Longrightarrow> x \<notin> FVars_term s \<Longrightarrow> x \<notin> FVars_term (t[s <- y])"
+lemma fresh_subst[simp]: "x \<notin> FVars t \<Longrightarrow> x \<notin> FVars s \<Longrightarrow> x \<notin> FVars (t[s <- y])"
   by (binder_induction t avoiding: t s y rule: term_strong_induct)
     (auto simp: Int_Un_distrib)
 
-lemma subst_idle[simp]: "y \<notin> FVars_term t \<Longrightarrow> t[s <- y] = t"
+lemma subst_idle[simp]: "y \<notin> FVars t \<Longrightarrow> t[s <- y] = t"
   by (binder_induction t avoiding: t s y rule: term_strong_induct) (auto simp: Int_Un_distrib)
 
-lemma FVars_usubst: "FVars_term M[N <- z] = FVars_term M - {z} \<union> (if z \<in> FVars_term M then FVars_term N else {})"
+lemma FVars_usubst: "FVars M[N <- z] = FVars M - {z} \<union> (if z \<in> FVars M then FVars N else {})"
   unfolding usubst_def
   by (auto simp: term.Vrs_Sb split: if_splits)
 
-lemma usubst_usubst: "y1 \<noteq> y2 \<Longrightarrow> y1 \<notin> FVars_term s2 \<Longrightarrow> t[s1 <- y1][s2 <- y2] = t[s2 <- y2][s1[s2 <- y2] <- y1]"
+lemma usubst_usubst: "y1 \<noteq> y2 \<Longrightarrow> y1 \<notin> FVars s2 \<Longrightarrow> t[s1 <- y1][s2 <- y2] = t[s2 <- y2][s1[s2 <- y2] <- y1]"
   apply (binder_induction t avoiding: t y1 y2 s1 s2 rule: term_strong_induct)
           apply (auto simp: Int_Un_distrib FVars_usubst split: if_splits)
   apply (subst (1 2) usubst_simps; auto simp: FVars_usubst split: if_splits)
@@ -297,14 +298,14 @@ inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing 
 
 inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
   "eval_ctx hole (Var hole)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term M \<Longrightarrow> eval_ctx hole (App (Fix f x M) E)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (App E N)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars M \<Longrightarrow> eval_ctx hole (App (Fix f x M) E)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> eval_ctx hole (App E N)"
 | "eval_ctx hole E \<Longrightarrow> eval_ctx hole (Succ E)"
 | "eval_ctx hole E \<Longrightarrow> eval_ctx hole (Pred E)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> eval_ctx hole (Pair E N)"
-| "val V \<Longrightarrow> eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term V \<Longrightarrow> eval_ctx hole (Pair V E)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> hole \<notin> dset xy \<Longrightarrow> eval_ctx hole (Let xy E N)"
-| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars_term N \<Longrightarrow> hole \<notin> FVars_term P \<Longrightarrow> eval_ctx hole (If E N P)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> eval_ctx hole (Pair E N)"
+| "val V \<Longrightarrow> eval_ctx hole E \<Longrightarrow> hole \<notin> FVars V \<Longrightarrow> eval_ctx hole (Pair V E)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> dset xy \<Longrightarrow> eval_ctx hole (Let xy E N)"
+| "eval_ctx hole E \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> FVars P \<Longrightarrow> eval_ctx hole (If E N P)"
 
 binder_inductive (no_auto_equiv) eval_ctx
   sorry
@@ -323,68 +324,68 @@ section \<open>B2\<close>
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
   "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]))"
 
-lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> eval_ctx y E[Var y <- x]"
+lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> eval_ctx y E[Var y <- x]"
 (*
   apply(binder_induction x E avoiding: y rule: eval_ctx.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
   apply(auto simp add:eval_ctx.intros)
 *)  sorry
 
-lemma eval_ctxt_FVars_term: "eval_ctx x E \<Longrightarrow> x \<in> FVars_term E"
+lemma eval_ctxt_FVars: "eval_ctx x E \<Longrightarrow> x \<in> FVars E"
   by (induct x E rule: eval_ctx.induct) auto
 
 lemma SSupp_term_Var[simp]: "SSupp Var Var = {}"
   unfolding SSupp_def by auto
 
-lemma IImsupp_term_Var[simp]: "IImsupp Var FVars_term Var = {}"
+lemma IImsupp_term_Var[simp]: "IImsupp Var FVars Var = {}"
   unfolding IImsupp_def by auto
 
-lemma tvsubst_term_Var: "tvsubst_term Var t = (t :: 'var :: var term)"
-  by (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> tvsubst_term Var t = (t :: 'var :: var term)" and K = FVars_term, simplified])
+lemma subst_Var: "subst Var t = (t :: 'var :: var term)"
+  by (rule term.strong_induct[where P = "\<lambda>t p. p = t \<longrightarrow> subst Var t = (t :: 'var :: var term)" and K = FVars, simplified])
     (auto simp: Int_Un_distrib intro!: ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
 
 lemma IImsupp_term_bound:
   fixes f ::"'a::var \<Rightarrow> 'a term"
   assumes "|SSupp Var f| <o |UNIV::'a set|"
-  shows "|IImsupp Var FVars_term f| <o |UNIV::'a set|"
+  shows "|IImsupp Var FVars f| <o |UNIV::'a set|"
   unfolding IImsupp_def using assms
   by (simp add: UN_bound Un_bound ordLess_ordLeq_trans[OF term.set_bd var_class.large'])
 
-lemma SSupp_term_tvsubst_term:
+lemma SSupp_term_subst:
   fixes f g ::"'a::var \<Rightarrow> 'a term"
   assumes "|SSupp Var f| <o |UNIV::'a set|"
-  shows "SSupp Var (tvsubst_term f \<circ> g) \<subseteq> SSupp Var f \<union> SSupp Var g"
+  shows "SSupp Var (subst f \<circ> g) \<subseteq> SSupp Var f \<union> SSupp Var g"
   using assms by (auto simp: SSupp_def)
 
-lemmas FVars_tvsubst_term = term.Vrs_Sb
+lemmas FVars_subst = term.Vrs_Sb
 
-lemma IImsupp_term_tvsubst_term:
+lemma IImsupp_term_subst:
   fixes f g ::"'a::var \<Rightarrow> 'a term"
   assumes "|SSupp Var f| <o |UNIV::'a set|"
-  shows "IImsupp Var FVars_term (tvsubst_term f \<circ> g) \<subseteq> IImsupp Var FVars_term f \<union> IImsupp Var FVars_term g"
-  using assms using SSupp_term_tvsubst_term[of f g]
-  apply (auto simp: IImsupp_def FVars_tvsubst_term)
+  shows "IImsupp Var FVars (subst f \<circ> g) \<subseteq> IImsupp Var FVars f \<union> IImsupp Var FVars g"
+  using assms using SSupp_term_subst[of f g]
+  apply (auto simp: IImsupp_def FVars_subst)
   by (metis (mono_tags, lifting) SSupp_def comp_apply mem_Collect_eq singletonD term.set(5) term.subst(5))
 
-lemma SSupp_term_tvsubst_term_bound:
+lemma SSupp_term_subst_bound:
   fixes f g ::"'a::var \<Rightarrow> 'a term"
   assumes "|SSupp Var f| <o |UNIV::'a set|"
   assumes "|SSupp Var g| <o |UNIV::'a set|"
-  shows "|SSupp Var (tvsubst_term f \<circ> g)| <o |UNIV :: 'a set|"
-  using SSupp_term_tvsubst_term[of f g] assms
+  shows "|SSupp Var (subst f \<circ> g)| <o |UNIV :: 'a set|"
+  using SSupp_term_subst[of f g] assms
   by (simp add: card_of_subset_bound Un_bound)
 
-lemma tvsubst_term_comp:
+lemma subst_comp:
   assumes "|SSupp Var f| <o |UNIV :: 'var set|" "|SSupp Var g| <o |UNIV :: 'var set|"
-  shows "tvsubst_term f (tvsubst_term g t) = tvsubst_term (tvsubst_term f o g) (t :: 'var :: var term)"
+  shows "subst f (subst g t) = subst (subst f o g) (t :: 'var :: var term)"
   unfolding term.Sb_comp[OF assms(2,1), symmetric] o_apply ..
 
-lemmas tvsubst_term_cong = term.Sb_cong
+lemmas subst_cong = term.Sb_cong
 
-lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars_term E \<Longrightarrow> E[Var y <- x][Var z <- y] = E[Var z <- x]"
+lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> E[Var y <- x][Var z <- y] = E[Var z <- x]"
   apply (cases "x = z")
   subgoal
-    by (auto simp add: usubst_def tvsubst_term_comp intro!: tvsubst_term_cong SSupp_term_tvsubst_term_bound)
-  subgoal by (subst usubst_usubst) (auto dest: eval_ctxt_FVars_term)
+    by (auto simp add: usubst_def subst_comp intro!: subst_cong SSupp_term_subst_bound)
+  subgoal by (subst usubst_usubst) (auto dest: eval_ctxt_FVars)
   done
 
 lemma dset_alt: "dset xy = {dfst xy, dsnd xy}"
@@ -398,7 +399,7 @@ lemma blocked_inductive:
   "blocked z M \<Longrightarrow> blocked z (Pred M)"
   "blocked z M \<Longrightarrow> blocked z (Pair M N)"
   "val V \<Longrightarrow> blocked z M \<Longrightarrow> blocked z (Pair V M)"
-  "blocked z M \<Longrightarrow> z \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term M = {} \<Longrightarrow> blocked z (Let xy M N)"
+  "blocked z M \<Longrightarrow> z \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars M = {} \<Longrightarrow> blocked z (Let xy M N)"
   "blocked z M \<Longrightarrow> blocked z (If M N P)"
   apply(simp_all add: blocked_def)
   using eval_ctx.intros(1) apply fastforce
@@ -407,7 +408,7 @@ proof (erule exE)+
   fix hole E
   assume "eval_ctx hole E \<and> N = E[Var z <- hole]"
   then have "eval_ctx hole E" and "N = E[Var z <- hole]" by auto
-  moreover obtain hole' where "hole' \<notin> FVars_term (App M E)"
+  moreover obtain hole' where "hole' \<notin> FVars (App M E)"
     using exists_fresh[OF ordLess_ordLeq_trans[OF term.set_bd var_class.large'], where ?x3="App M E"]
     by auto
   moreover obtain E' where "E' = App (Fix f x M) E[Var hole'<-hole]" by simp
@@ -415,7 +416,7 @@ proof (erule exE)+
     by (metis Un_iff term.set(6))
   have "App (Fix f x M) N = E'[Var z <- hole']" 
     using subst_subst \<open>E' = App (Fix f x M) E[Var hole' <- hole]\<close> \<open>N = E[Var z <- hole]\<close>
-      \<open>eval_ctx hole E\<close> \<open>hole' \<notin> FVars_term (App M E)\<close> 
+      \<open>eval_ctx hole E\<close> \<open>hole' \<notin> FVars (App M E)\<close> 
     by fastforce
   show "\<exists>hole' E'. eval_ctx hole' E' \<and> App (Fix f x M) N = E'[Var z <- hole']"
     using \<open>eval_ctx hole' E'\<close> \<open>App (Fix f x M) N = E'[Var z <- hole']\<close>
@@ -577,7 +578,7 @@ lemma subst_If_inversion:
 
 lemma subst_Fix_inversion:
   assumes "M[t <- x] = Fix f z Q" and "\<not> M = Var x"
-  assumes "f \<noteq> x" and "f \<notin> FVars_term t" and "x \<noteq> z" and "z \<notin> FVars_term t"
+  assumes "f \<noteq> x" and "f \<notin> FVars t" and "x \<noteq> z" and "z \<notin> FVars t"
   obtains Q' where "M = Fix f z Q'" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
@@ -590,7 +591,7 @@ lemma subst_Fix_inversion:
 
 lemma subst_Let_inversion:
   assumes "M[t <- x] = Let xy P Q" and "\<not> M = Var x"
-  assumes "x \<notin> dset xy" and "FVars_term t \<inter> dset xy = {}"
+  assumes "x \<notin> dset xy" and "FVars t \<inter> dset xy = {}"
   obtains P' Q' where "M = Let xy P' Q'" and "P'[t <- x] = P" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
@@ -643,20 +644,20 @@ next
   then show ?case using val.intros by auto
 qed
 
-lemma FVars_subst: "(FVars_term M \<union> FVars_term N) \<supseteq> FVars_term M[N <- z]"
+lemma FVars_subst: "(FVars M \<union> FVars N) \<supseteq> FVars M[N <- z]"
   unfolding usubst_def
-  by (auto simp: FVars_tvsubst_term split:if_splits)
+  by (auto simp: FVars_subst split:if_splits)
 
-lemma FVars_subst_inversion: "(FVars_term M[N <- z] \<union> {z}) \<supseteq> FVars_term M"
+lemma FVars_subst_inversion: "(FVars M[N <- z] \<union> {z}) \<supseteq> FVars M"
   unfolding usubst_def
-  by (auto simp: FVars_tvsubst_term)
+  by (auto simp: FVars_subst)
 
 thm eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     p = (z, N, M, E, x, P) \<longrightarrow> M[N <- z] = E[P <- x] \<longrightarrow>
     x \<noteq> z \<longrightarrow>
-    x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N \<longrightarrow>
+    x \<notin> FVars M \<union> FVars P \<union> FVars N \<longrightarrow>
     \<not> blocked z M \<longrightarrow> (\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z])"
-    and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P",
+    and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars N \<union> FVars M  \<union> FVars E \<union> FVars P",
     rule_format, rotated -5, of "(z, N, M, E, x, P)" M E x,
     simplified prod.inject simp_thms True_implies_equals]
 
@@ -664,15 +665,15 @@ lemma b2:
   assumes "eval_ctx x E"
     and "M[N <- z] = E[P <- x]"
     and "x \<noteq> z"
-    and "x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N"
+    and "x \<notin> FVars M \<union> FVars P \<union> FVars N"
     and "\<not> (blocked z M)"
   shows "\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
 proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     p = (z, N, M, E, x, P) \<longrightarrow> M[N <- z] = E[P <- x] \<longrightarrow>
     x \<noteq> z \<longrightarrow>
-    x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N \<longrightarrow>
+    x \<notin> FVars M \<union> FVars P \<union> FVars N \<longrightarrow>
     \<not> blocked z M \<longrightarrow> (\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z])"
-    and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P",
+    and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars N \<union> FVars M  \<union> FVars E \<union> FVars P",
     rule_format, rotated -5, of "(z, N, M, E, x, P)" M E x, OF _ assms(2,3,4,5,1),
     simplified prod.inject simp_thms True_implies_equals prod.case], goal_cases card 1 2 3 4 5 6 7 8 9)
 case (card p)
@@ -698,8 +699,8 @@ next
   then obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
     using \<open>R[N <- z] = E[P <- hole]\<close> 2(3)[of "(z, N, R, E, hole, P)" R] 2(8)
     by (metis Un_iff \<open>M = App F R\<close> term.set(6))
-  moreover have "hole \<notin> FVars_term Q'"
-    using 2 \<open>hole \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App (Fix f a Q') R\<close>
+  moreover have "hole \<notin> FVars Q'"
+    using 2 \<open>hole \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = App (Fix f a Q') R\<close>
     by simp
   ultimately have "M = (App (Fix f a Q') E')[P' <- hole] \<and> App (Fix f a Q) E = (App (Fix f a Q') E')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = App (Fix f a Q') R\<close> \<open>Q'[N <- z] = Q\<close> \<open>R[N <- z] = E[P <- hole]\<close>
@@ -715,8 +716,8 @@ next
     using \<open>M = App R Q'\<close> eval_ctx.intros(3) blocked_def blocked_inductive(3) by blast
   ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- x]"
     using 3(2)[where M = R] 3 by force
-  moreover have "x \<notin> FVars_term Q'"
-    using 3 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = App R Q'\<close>
+  moreover have "x \<notin> FVars Q'"
+    using 3 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = App R Q'\<close>
     by simp
   ultimately have "M = (App E' Q')[P' <- x] \<and> App E Q = (App E' Q')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = App R Q'\<close> \<open>Q'[N <- z] = Q\<close> by simp
@@ -757,8 +758,8 @@ next
     using blocked_inductive \<open>M = Pair Q1 Q2\<close> by metis
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q1 = E'[P' <- x]"
     using 6(2)[where M = Q] 6 by fastforce
-   moreover have "x \<notin> FVars_term Q2"
-    using 6 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair Q1 Q2\<close>
+   moreover have "x \<notin> FVars Q2"
+    using 6 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = Pair Q1 Q2\<close>
     by simp
   ultimately have "M = (Pair E' Q2)[P' <- x] \<and> Pair E Q = (Pair E' Q2)[N <- z] \<and> P = P'[N <- z]"
     by (simp add: \<open>M = term.Pair Q1 Q2\<close> \<open>Q = Q2[N <- z]\<close>)
@@ -774,8 +775,8 @@ next
     using "7"(1) blocked_inductive(6) calculation(2) by blast
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q = E'[P' <- x]"
     using 7(3)[where M = Q] 7 by fastforce
-   moreover have "x \<notin> FVars_term V'"
-    using 7 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Pair V' Q\<close>
+   moreover have "x \<notin> FVars V'"
+    using 7 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = Pair V' Q\<close>
     by simp
   ultimately have "M = (Pair V' E')[P' <- x] \<and> Pair V E = (Pair V' E')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = term.Pair V' Q\<close> \<open>V = V'[N <- z]\<close> \<open>Q = E'[P' <- x]\<close> by simp
@@ -793,16 +794,16 @@ next
   ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
     using 8(3)[of "(z, N, R, E, hole, P)" R] 8(8,9)
     by (metis Un_iff term.set(9))
-  moreover have "hole \<notin> FVars_term Q'"
-    using 8 \<open>hole \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = Let x R Q'\<close>
+  moreover have "hole \<notin> FVars Q'"
+    using 8 \<open>hole \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = Let x R Q'\<close>
     by simp
-  moreover have "dset x \<inter> FVars_term E' = {}" and "dset x \<inter> FVars_term P' = {}"
+  moreover have "dset x \<inter> FVars E' = {}" and "dset x \<inter> FVars P' = {}"
     using FVars_subst_inversion[of E' N z] FVars_subst_inversion[of P' N z] 8(1) \<open>E = E'[N <- z]\<close> \<open>P = P'[N <- z]\<close>
     by auto
   ultimately have "M = (Let x E' Q')[P' <- hole]" 
     using usubst_simps(9)[of hole x P' E' Q'] 8(1) \<open>M = Let x R Q'\<close> by auto
   moreover have "Let x E Q = (Let x E' Q')[N <- z]"
-    using usubst_simps(9)[of z x N E' Q'] \<open>dset x \<inter> FVars_term E' = {}\<close> 8(1)
+    using usubst_simps(9)[of z x N E' Q'] \<open>dset x \<inter> FVars E' = {}\<close> 8(1)
     using \<open>E = E'[N <- z]\<close> \<open>Q'[N <- z] = Q\<close>
     by fastforce
   ultimately have "M = (Let x E' Q')[P' <- hole] \<and> Let x E Q = (Let x E' Q')[N <- z] \<and> P = P'[N <- z]"
@@ -818,8 +819,8 @@ next
     using blocked_inductive(9) \<open>M = If Q0 Q1' Q2'\<close> by auto
   ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q0 = E'[P' <- x]"
     using 9(2)[where M = Q0] 9 by fastforce
-  moreover have "x \<notin> FVars_term Q1'" and "x \<notin> FVars_term Q2'"
-    using 9 \<open>x \<notin> FVars_term M \<union> FVars_term P \<union> FVars_term N\<close> \<open>M = If Q0 Q1' Q2'\<close>
+  moreover have "x \<notin> FVars Q1'" and "x \<notin> FVars Q2'"
+    using 9 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = If Q0 Q1' Q2'\<close>
     by auto
   ultimately have "M = (If E' Q1' Q2')[P' <- x] \<and> (If E Q1 Q2) = (If E' Q1' Q2')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = If Q0 Q1' Q2'\<close> \<open>Q1 = Q1'[N <- z]\<close> \<open>Q2 = Q2'[N <- z]\<close> \<open>Q0 = E'[P' <- x]\<close> by simp
@@ -831,7 +832,7 @@ section \<open>B3\<close>
 thm eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     p = (z, N, M, E, x, P1, P2) \<longrightarrow> M[N <- z] = E[P1 <- x] \<longrightarrow>
     P1 \<rightarrow> P2 \<longrightarrow> \<not> blocked z M \<longrightarrow> (\<exists>M'. M \<rightarrow> M' \<and> M'[N <- z] = E[P2 <- x])"
-    and K = "\<lambda>(z, N, M, E, x, P1, P2). {z,x} \<union> FVars_term N \<union> FVars_term M  \<union> FVars_term E \<union> FVars_term P1 \<union> FVars_term P2",
+    and K = "\<lambda>(z, N, M, E, x, P1, P2). {z,x} \<union> FVars N \<union> FVars M  \<union> FVars E \<union> FVars P1 \<union> FVars P2",
     rule_format, rotated -4, of "(z, N, M, E, x, P1, P2)" M E x,
     simplified prod.inject simp_thms True_implies_equals]
 
@@ -841,7 +842,7 @@ lemma b3_1:
 proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     p = (z, N, M, E, x, P1, P2) \<longrightarrow> M[N <- z] = E[P1 <- x] \<longrightarrow>
     P1 \<rightarrow> P2 \<longrightarrow> \<not> blocked z M \<longrightarrow> (\<exists>M'. M \<rightarrow> M' \<and> M'[N <- z] = E[P2 <- x])"
-    and K = "\<lambda>(z, N, M, E, x, P1, P2). {z,x} \<union> FVars_term N \<union> FVars_term M \<union> FVars_term E \<union> FVars_term P1 \<union> FVars_term P2",
+    and K = "\<lambda>(z, N, M, E, x, P1, P2). {z,x} \<union> FVars N \<union> FVars M \<union> FVars E \<union> FVars P1 \<union> FVars P2",
     rule_format, rotated -4, of "(z, N, M, E, x, P1, P2)" M E x, OF _ assms(2,3,4,1),
     simplified prod.inject simp_thms True_implies_equals], 
     goal_cases card 1 2 3 4 5 6 7 8 9)
@@ -1039,9 +1040,9 @@ next
   then obtain R' where "R \<rightarrow> R'" and "R'[N <- z] = E[P2 <- hole]"
     using \<open>P1 \<rightarrow> P2\<close> "8"(3)[of _  R] \<open>R[N <- z] = E[P1 <- hole]\<close> by auto
   thm FVars_subst
-  have "dset xy \<inter> FVars_term E[P2 <- hole] = {}"
+  have "dset xy \<inter> FVars E[P2 <- hole] = {}"
     using 8(1) FVars_subst[of E P2 hole] by auto
-  then have "dset xy \<inter> FVars_term R' = {}"
+  then have "dset xy \<inter> FVars R' = {}"
     using FVars_subst_inversion[of R' N z] FVars_subst_inversion[of Q' N z]
     using 8(1) \<open>R'[N <- z] = E[P2 <- hole]\<close> \<open>Q'[N <- z] = Q\<close>
     by auto
@@ -1141,7 +1142,7 @@ lemma count_term_simps[simp]:
   "count_term x (App M N) = count_term x M + count_term x N"
   "x \<noteq> f \<Longrightarrow> x \<noteq> a \<Longrightarrow> count_term x (Fix f a M) = count_term x M"
   "count_term x (Pair M N) = count_term x M + count_term x N"
-  "x \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars_term M = {} \<Longrightarrow> count_term x (Let xy M N) = count_term x M + count_term x N"
+  "x \<notin> dset xy \<Longrightarrow> dset xy \<inter> FVars M = {} \<Longrightarrow> count_term x (Let xy M N) = count_term x M + count_term x N"
   unfolding Zero_def Pred_def Succ_def If_def Var_def Fix_def App_def Pair_def Let_def
   by (subst count_term_ctor; auto simp:
     set1_term_pre_def set2_term_pre_def set3_term_pre_def set4_term_pre_def
@@ -1225,5 +1226,5 @@ lemma b6:
   shows "diverge M[P <- z] \<or> stuck M[P <- z]"
   sorry
 
-term FVars_term
+term FVars
 end
