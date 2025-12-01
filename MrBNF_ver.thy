@@ -134,8 +134,26 @@ inductive betas :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var ter
 definition beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" (infix "\<rightarrow>*" 70) where
   "M \<rightarrow>* N = (\<exists>n. M \<rightarrow>[n] N)"
 
+lemma beta_path_sum:
+  "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow>[n] P \<Longrightarrow> M \<rightarrow>[m + n] P"
+  apply(induction rule:betas.induct)
+  apply(auto intro:betas.intros)
+  done
+
 coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
+
+lemma betas_diverge:
+  assumes "M \<rightarrow>[n] N" and "N \<Up>" shows "M \<Up>"
+  using assms
+proof(induction rule:betas.induct)
+  case (step M N n P)
+  then show ?case using diverge.intros by blast
+qed
+
+corollary beta_star_diverge:
+  "M \<rightarrow>* N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
+  using betas_diverge beta_star_def by blast
 
 lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
 proof (induction M)
@@ -1151,13 +1169,32 @@ lemma count_term_simps[simp]:
     set1_term_pre_def set2_term_pre_def set3_term_pre_def set4_term_pre_def
     noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
 
-lemma eval_ctx_beta: "eval_ctx x E \<Longrightarrow> M \<rightarrow>* N \<Longrightarrow> E[M <- x] \<rightarrow>* E[N <- x]"
-  sorry
+lemma eval_ctx_beta: "eval_ctx x E \<Longrightarrow> M \<rightarrow> N \<Longrightarrow> E[M <- x] \<rightarrow> E[N <- x]"
+  apply(binder_induction x E avoiding: M N E rule:eval_ctx.induct)
+  apply(auto intro:beta.intros)
+  sorry (* this will work once binder_induction works*)
+
+corollary eval_ctx_betas: 
+  assumes "eval_ctx x E" and "M \<rightarrow>[n] N" shows "E[M <- x] \<rightarrow>[n] E[N <- x]"
+  using \<open>M \<rightarrow>[n] N\<close>
+proof(induction rule:betas.induct)
+  case (refl M)
+  then show ?case using betas.intros by auto
+next
+  case (step M N n P)
+  then have "E[M <- x] \<rightarrow> E[N <- x]" 
+    using eval_ctx_beta \<open>eval_ctx x E\<close> by auto
+  then show ?case using \<open>E[N <- x] \<rightarrow>[n] E[P <- x]\<close> betas.intros(2) by auto
+qed
+
+corollary eval_ctx_beta_star: "eval_ctx x E \<Longrightarrow> M \<rightarrow>* N \<Longrightarrow> E[M <- x] \<rightarrow>* E[N <- x]"
+  using eval_ctx_betas beta_star_def by blast
 
 lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightarrow> eval_ctx x E[Q <- y]"
   apply(induction rule:eval_ctx.induct)
   thm eval_ctx.intros
-  apply(auto intro:eval_ctx.intros)
+  apply(auto intro:eval_ctx.intros FVars_usubst) 
+  (* want to show hole \<notin> N[Q <- y] in every case, but idk how to tell this to Isabelle*)
   using eval_ctx.intros FVars_usubst
   sorry
 
@@ -1165,15 +1202,36 @@ lemma count_idle[simp]: "x \<notin> FVars M \<Longrightarrow> count_term x M = 0
   sorry
 
 lemma count_eval_ctx: "eval_ctx hole E \<Longrightarrow> count_term hole E = 1"
-  apply(induction rule:eval_ctx.induct)
+  apply(binder_induction hole E avoiding: "Var hole" rule:eval_ctx.induct)
   apply(auto)
-  sorry
+  sorry (*will work when binder induction works*)
 
 lemma count_subst: "x \<noteq> y \<Longrightarrow> count_term y M[Var y <- x] = count_term x M + count_term y M"
   sorry
 
-lemma beta_path_diff: "p \<ge> n \<Longrightarrow> M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[p] P \<Longrightarrow> N \<rightarrow>[p-n] P"
-  sorry
+lemma betas_pets:
+  "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow> P \<Longrightarrow> M \<rightarrow>[Suc m] P"
+  apply(induction rule:betas.induct)
+  apply(auto intro:betas.intros)
+  done
+
+lemma beta_path_diff': 
+  assumes "M \<rightarrow>[n] N" shows "p \<ge> n \<Longrightarrow> M \<rightarrow>[p] P \<Longrightarrow> N \<rightarrow>[p-n] P"
+  using assms
+proof(induction rule:betas.induct) 
+(*We want to induct on the path M \<rightarrow>[n] N by stepping N rightward, but the induction rule of betas steps M leftward instead*)
+  case (refl M)
+  then show ?case using \<open>M \<rightarrow>[p] P\<close> by auto
+next
+  case (step M' M n N)
+  (*assume "M \<rightarrow>[p] P"
+  then have "N \<rightarrow>[p - n] P" using \<open>Suc n \<le> p\<close> step.IH by auto*)
+  then show ?case sorry
+qed
+
+lemma beta_path_diff: 
+  "p \<ge> n \<Longrightarrow> M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[p] P \<Longrightarrow> N \<rightarrow>[p-n] P"
+  using beta_path_diff' by blast
 
 lemma normalize_longest_beta: 
   "normal N \<Longrightarrow> M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[m] M' \<Longrightarrow> n \<ge> m"
@@ -1235,7 +1293,7 @@ proof (induct k x M rule: my_induct)
         then have "M[N <- x] \<rightarrow>* E[N <- x][N' <- hole]" and "M[Q <- x] \<rightarrow>* E[Q <- x][N' <- hole]"
           using \<open>M[N <- x] = E[N <- x][N <- hole]\<close> \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close> 
           using \<open>eval_ctx hole E[N <- x]\<close> \<open>eval_ctx hole E[Q <- x]\<close>
-          using eval_ctx_beta
+          using eval_ctx_beta_star
           by auto
         then obtain m where "E[N <- x][N' <- hole] \<rightarrow>[m] P" and "m \<le> k"
           using beta_star_def[of "M[N <- x]"] lex(3) lex(4)
@@ -1248,7 +1306,16 @@ proof (induct k x M rule: my_induct)
              show x \<notin> FVars N' first?*)
         ultimately have "E[N' <- hole][Q <- x] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[N' <- hole][Q <- x] \<rightarrow>[m] M'[Q <- x])"
           using \<open>normal P\<close> \<open>Q \<lesssim> N\<close> lex(2)[of "E[N' <- hole]"] sorry (*the current IH needs m = k instead of m \<le> k*)
-        then show ?thesis sorry
+        then have "E[Q <- x][N' <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][N' <- hole] \<rightarrow>[m] M'[Q <- x])"
+          sorry (* require exchange of subst, but I dont think this is true in general. Maybe assume x \<notin> FVars N'?*)
+        moreover have "E[Q <- x][Q <- hole] \<rightarrow>* E[Q <- x][N' <- hole]"
+          using eval_ctx_beta_star[of hole "E[Q <- x]" Q N'] \<open>Q \<rightarrow>* N'\<close> \<open>eval_ctx hole E[Q <- x]\<close>
+          by blast
+        ultimately have "E[Q <- x][Q <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][Q <- hole] \<rightarrow>[m] M'[Q <- x])"
+          using beta_star_diverge[of "E[Q <- x][Q <- hole]" "E[Q <- x][N' <- hole]"]
+          using beta_path_sum beta_star_def
+          by blast
+        then show ?thesis using \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close> by auto
       qed
     next
       case False
