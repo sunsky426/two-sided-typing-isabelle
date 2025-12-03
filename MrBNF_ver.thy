@@ -989,22 +989,27 @@ proof (binder_induction P1 P2 avoiding: z N M rule:beta.strong_induct[unfolded U
      then show ?case
       using \<open>M = term.If Q0' Q1' Q2'\<close> \<open>Q2'[N <- z] = P2\<close> beta.Ifs 11(1) by auto
   next
-    case (12 xy V W Q)
+    case (12 V W xy Q)
     then have "M[N <- z] = Let xy (Pair V W) Q" by simp
     then obtain P' Q' where "M = Let xy P' Q'" and "P'[N <- z] = Pair V W" and "Q'[N <- z] = Q"
       using subst_Let_inversion[of M N z xy "Pair V W" Q] \<open>\<not> blocked z M\<close> 12(1) 12(2) blocked_inductive(1)
       by blast
     moreover have "\<not> blocked z P'" using blocked_inductive(8)[of z P'] \<open>M = Let xy P' Q'\<close> 1(4) 12(1,3)
       by auto
-    ultimately obtain V' W' where "P' = Pair V' W'" and "V'[N <- z] = V" and "W' [N <- z] = W"
-      using subst_Pair_inversion blocked_inductive(1) by blast
+    ultimately obtain V' W' where "P' = Pair V' W'" and "V'[N <- z] = V" and "W' [N <- z] = W" and "\<not> blocked z V'"
+      using subst_Pair_inversion blocked_inductive(1, 6) by metis
+    then have "val V'"
+      using subst_val_inversion \<open>val V\<close> \<open>val W\<close> by auto
+    then have "\<not> blocked z W'" using \<open>P' = Pair V' W'\<close> \<open>\<not> blocked z P'\<close> blocked_inductive(7) by auto
+    then have "val W'" using subst_val_inversion \<open>W'[N <- z] = W\<close> \<open>val W\<close> by auto
     have "(Q'[V' <- dfst xy][W' <- dsnd xy])[N <- z] = Q[V <- dfst xy][W <- dsnd xy]"
       using usubst_usubst[of "dsnd xy" z N "Q'[V' <- dfst xy]" W'] usubst_usubst[of "dfst xy" z N Q' V']
       using 12(1) 12(2) \<open>Q'[N <- z] = Q\<close> \<open>V'[N <- z] = V\<close> \<open>W'[N <- z] = W\<close>
       by (metis Int_emptyD  dsel_dset(1,2))
     then show ?case
-      by (metis \<open>M = term.Let xy P' Q'\<close> \<open>P' = term.Pair V' W'\<close> beta.Let
-          usubst_simps(5))
+      using \<open>M = term.Let xy P' Q'\<close> \<open>P' = term.Pair V' W'\<close> beta.Let usubst_simps(5)
+      using \<open>val V'\<close> \<open>val W'\<close>
+      by metis
   next
     case 13
     then have "M[N <- z] = Pred Zero" by simp
@@ -1019,24 +1024,28 @@ proof (binder_induction P1 P2 avoiding: z N M rule:beta.strong_induct[unfolded U
     then have "M[N <- z] = Pred (Succ P2)" by simp
     then obtain Q where "M = Pred Q" and "\<not> blocked z Q" and "Q[N <- z] = Succ P2" using subst_Pred_inversion
       by (metis "1"(4) blocked_inductive(1,5))
-    then obtain Q' where "Q = Succ Q'" and "Q'[N <- z] = P2"
-      using subst_Succ_inversion blocked_inductive(1) by blast
-    then show ?case
-      using \<open>M = Pred Q\<close> PredS sorry
+    then obtain Q' where "Q = Succ Q'" and "\<not> blocked z Q'" and "Q'[N <- z] = P2"
+      using subst_Succ_inversion blocked_inductive(1, 4) by metis
+    moreover have "num Q'" using subst_num_inversion \<open>Q'[N <- z] = P2\<close> \<open>\<not> blocked z Q'\<close> \<open>num P2\<close>
+      by metis
+    ultimately show ?case
+      using \<open>M = Pred Q\<close> PredS by force
   next
-    case (15 f x Q V)
+    case (15 V f x Q)
     then have "M[N <- z] = App (Fix f x Q) V" by simp
     then obtain Q' V' where "M = App (Fix f x Q') V'" and "Q'[N <- z] = Q" and "V'[N <- z] = V"
       using  \<open>\<not> blocked z M\<close> subst_Fix_inversion subst_App_inversion blocked_inductive(1,3) 15(1,2)
       by (metis insert_disjoint(2) insert_iff)
     moreover have "(Fix f x Q')[N <- z] = Fix f x Q"
       using 15(1) 15(2) \<open>Q'[N <- z] = Q\<close> by auto 
-    ultimately have "Q'[V' <- x][Fix f x Q' <- f][N <- z] = Q[V <- x][Fix f x Q <- f]"
+    ultimately have *: "Q'[V' <- x][Fix f x Q' <- f][N <- z] = Q[V <- x][Fix f x Q <- f]"
       using usubst_usubst[of f z N "Q'[V' <- x]" "Fix f x Q'"] usubst_usubst[of x z N "Q'" "V'"]
       using 15(1) 15(2)
       by (metis insert_disjoint(2) insert_iff)
+    have "\<not> blocked z V'" using blocked_inductive \<open>\<not> blocked z M\<close> \<open>M = App (Fix f x Q') V'\<close> by blast
+    then have "val V'" using subst_val_inversion \<open>val V\<close> \<open>V'[N <- z] = V\<close> by auto
     then show ?case
-      by (metis \<open>M = App (Fix f x Q') V'\<close> beta.FixBeta usubst_simps(5))
+      using \<open>M = App (Fix f x Q') V'\<close> beta.FixBeta usubst_simps(5) * by metis
   qed
   then show ?case using 1 by auto
 next
