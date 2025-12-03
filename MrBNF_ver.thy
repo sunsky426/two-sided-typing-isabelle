@@ -2,7 +2,7 @@ theory MrBNF_ver
   imports Binders.MRBNF_Recursor "Case_Studies.FixedCountableVars"
 begin
 
-section \<open>Def\<close>
+section \<open>Types and Terms\<close>
 
 datatype "type" = 
     Nat
@@ -59,6 +59,11 @@ binder_datatype (FVars: 'var) "term" =
   | Let "(xy::'var) dpair" M::"'var term" N::"'var term" binds xy in N
   for subst: subst
 
+lemma finite_FVars[simp]: "finite (FVars M)"
+  apply(induction M)
+          apply(auto)
+  done
+
 definition usubst ("_[_ <- _]" [1000, 49, 49] 1000) where
   "usubst t u x = subst (Var(x := u)) t"
 
@@ -111,6 +116,8 @@ inductive stuck :: "'var::var term \<Rightarrow> bool" where
 | "stuck M \<Longrightarrow> stuck (Let x M N)"
 | "stuck M \<Longrightarrow> stuck (If M N P)"
 
+section \<open>Beta Reduction\<close>
+
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
   OrdApp2: "N \<rightarrow> N' \<Longrightarrow> App (Fix f x M) N \<rightarrow> App (Fix f x M) N'"
 | OrdApp1: "M \<rightarrow> M' \<Longrightarrow> App M N \<rightarrow> App M' N"
@@ -122,23 +129,49 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | OrdIf: "M \<rightarrow> M' \<Longrightarrow> If M N P \<rightarrow> If M' N P"
 | Ifz : "If Zero N P \<rightarrow> N"
 | Ifs : "num n \<Longrightarrow> If (Succ n) N P \<rightarrow> P"
-| Let : "Let xy (Pair V W) M \<rightarrow> M[V <- dfst xy][W <- dsnd xy]"
+| Let : "val V \<Longrightarrow> val W \<Longrightarrow> Let xy (Pair V W) M \<rightarrow> M[V <- dfst xy][W <- dsnd xy]"
 | PredZ: "Pred Zero \<rightarrow> Zero"
-| PredS: "Pred (Succ n) \<rightarrow> n"
-| FixBeta: "App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
+| PredS: "num n \<Longrightarrow> Pred (Succ n) \<rightarrow> n"
+| FixBeta: "val V \<Longrightarrow> App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
+
+lemma beta_deterministic: "M \<rightarrow> N \<Longrightarrow> M \<rightarrow> N' \<Longrightarrow> N = N'"
+  apply(induction M N arbitrary: N' rule:beta.induct)
+  subgoal premises prems for M N f x Q N' using prems(3) 
+    apply - 
+    apply(erule beta.cases) 
+                 apply(auto simp add: prems(1, 2) elim:beta.cases)
+    sorry
+  sorry
 
 inductive betas :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var term \<Rightarrow> bool"  ("_ \<rightarrow>[_] _" [70, 0, 70] 70) where
   refl: "M \<rightarrow>[0] M"
 | step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>[n] P \<rbrakk> \<Longrightarrow> M \<rightarrow>[Suc n] P"
 
-definition beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" (infix "\<rightarrow>*" 70) where
-  "M \<rightarrow>* N = (\<exists>n. M \<rightarrow>[n] N)"
+lemma betas_pets:
+  "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow> P \<Longrightarrow> M \<rightarrow>[Suc m] P"
+  apply(induction rule:betas.induct)
+   apply(auto intro:betas.intros)
+  done
 
-lemma beta_path_sum:
+lemma betas_path_sum:
   "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow>[n] P \<Longrightarrow> M \<rightarrow>[m + n] P"
   apply(induction rule:betas.induct)
-  apply(auto intro:betas.intros)
+   apply(auto intro:betas.intros)
   done
+
+lemma betas_deterministic: 
+  "M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[n] N' \<Longrightarrow> N = N'"
+proof(induction n arbitrary: M)
+  case (Suc n)
+  then obtain P P' where "M \<rightarrow> P" and "P \<rightarrow>[n] N" and "M \<rightarrow> P'" and "P' \<rightarrow>[n] N'"
+    using betas.cases nat.distinct(1) nat.inject
+    by metis
+  moreover then have "P = P'" using beta_deterministic by auto
+  ultimately show ?case using Suc.IH by simp
+qed(auto elim:betas.cases)
+
+definition beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" (infix "\<rightarrow>*" 70) where
+  "M \<rightarrow>* N = (\<exists>n. M \<rightarrow>[n] N)"
 
 coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
   "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
@@ -171,6 +204,8 @@ binder_inductive (no_auto_equiv) val
 
 binder_inductive (no_auto_equiv) beta
   sorry (*TODO: Dmitriy*)
+
+section \<open>Subst Lemmas\<close>
 
 lemma num_usubst[simp]: "num M \<Longrightarrow> M[V <- x] = M"
   by (induct M rule: num.induct) auto
@@ -223,6 +258,22 @@ lemma beta_usubst: "M \<rightarrow> N \<Longrightarrow> val V \<Longrightarrow> 
   apply (auto intro: beta.intros)
   done
 
+lemma FVars_beta: "M \<rightarrow> N \<Longrightarrow> FVars N \<subseteq> FVars M"
+  apply(binder_induction M N avoiding: "App M N" rule:beta.strong_induct)
+               apply(auto)
+  subgoal for V f x M z
+    sorry
+  sorry
+
+corollary FVars_betas: "M \<rightarrow>[n] N \<Longrightarrow> FVars N \<subseteq> FVars M"
+  apply(induction rule:betas.induct)
+  using FVars_beta by auto
+
+corollary FVars_beta_star: "M \<rightarrow>* N \<Longrightarrow> FVars N \<subseteq> FVars M"
+  using beta_star_def FVars_betas by blast
+
+section \<open>Judgements\<close>
+
 type_synonym 'var typing = "'var term \<times> type"
 notation Product_Type.Pair (infix ":." 70)
 
@@ -267,7 +318,6 @@ inductive judgement :: "'var::var typing set \<Rightarrow> 'var::var typing set 
 | OkPrL_1: "(M1 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
 | OkPrL_2: "(M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
 
-print_attributes
 binder_inductive (no_auto_equiv) judgement
   sorry
 
@@ -334,16 +384,38 @@ definition normal :: "'var::var term \<Rightarrow> bool" where
 definition normalizes :: "'var::var term \<Rightarrow> bool" where
   "normalizes M \<equiv> \<exists>N. normal N \<and> M \<rightarrow>* N"
 
+lemma normalizes_stepsTo_normalizes: "M \<rightarrow> N \<Longrightarrow> normalizes N \<Longrightarrow> normalizes M"
+  using normalizes_def beta_star_def betas.intros by blast
+
 definition less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<lesssim>" 90) where
   "P \<lesssim> Q \<equiv> normalizes P \<longrightarrow> (\<exists>N. normal N \<and> P \<rightarrow>* N \<and> Q \<rightarrow>* N)"
 
-lemma diverge_or_normalize: "diverge M \<or> normalizes M"
-  sorry
+thm diverge.coinduct
+
+lemma diverge_or_normalizes: "diverge M \<or> normalizes M"
+proof(rule disjCI)
+  assume "\<not> normalizes M"
+  then show "M \<Up>"
+  proof (coinduction arbitrary: M rule:diverge.coinduct)
+    case diverge
+    have "\<not> normal M" 
+      using \<open>\<not> normalizes M\<close> normalizes_def beta_star_def betas.intros by blast
+    then obtain N where "M \<rightarrow> N" using normal_def by auto
+    then have "\<not> normalizes N" 
+      using normalizes_stepsTo_normalizes diverge by auto
+    then show ?case using \<open>M \<rightarrow> N\<close> by auto
+  qed
+qed
 
 section \<open>B2\<close>
 
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
   "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]))"
+
+lemma blocked_fresh_hole:
+  assumes "finite A" 
+  shows "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]) \<and> hole \<notin> A)"
+  sorry
 
 lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> eval_ctx y E[Var y <- x]"
 (*
@@ -665,10 +737,6 @@ next
   then show ?case using val.intros by auto
 qed
 
-lemma FVars_subst: "(FVars M \<union> FVars N) \<supseteq> FVars M[N <- z]"
-  unfolding usubst_def
-  by (auto simp: FVars_subst split:if_splits)
-
 lemma FVars_subst_inversion: "(FVars M[N <- z] \<union> {z}) \<supseteq> FVars M"
   unfolding usubst_def
   by (auto simp: FVars_subst)
@@ -954,7 +1022,7 @@ proof (binder_induction P1 P2 avoiding: z N M rule:beta.strong_induct[unfolded U
     then obtain Q' where "Q = Succ Q'" and "Q'[N <- z] = P2"
       using subst_Succ_inversion blocked_inductive(1) by blast
     then show ?case
-      using \<open>M = Pred Q\<close> PredS by auto
+      using \<open>M = Pred Q\<close> PredS sorry
   next
     case (15 f x Q V)
     then have "M[N <- z] = App (Fix f x Q) V" by simp
@@ -1103,22 +1171,6 @@ qed
 
 section \<open>B4\<close>
 
-thm diverge.cases
-
-lemma div_ctx: 
-  assumes "diverge Q" and "eval_ctx x E" 
-  shows "diverge E[Q <- x]"
-(*
-  using assms(2)
-proof(induction x E rule: eval_ctx.induct)
-  case (2 hole E M f x)
-  obtain E' where "E[Q <- hole] \<rightarrow> E'" and "diverge E'"
-    using 2 diverge.cases[of "E[Q <- hole]"] by auto
-  have "App (Fix f x M)[Q <- hole] E[Q <- hole] \<Up>"
-  show ?case
-    using 2 usubst_simps
-*) sorry
-
 context fixes x :: "'a :: var" begin
 private definition Uctor :: "('a, 'a, 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat), 'a MrBNF_ver.term \<times> (unit \<Rightarrow> nat)) term_pre \<Rightarrow> unit \<Rightarrow> nat" where
   "Uctor \<equiv> \<lambda>pre _. case Rep_term_pre pre of
@@ -1170,7 +1222,7 @@ lemma count_term_simps[simp]:
     noclash_term_def sum.set_map Abs_term_pre_inverse[OF UNIV_I])+
 
 lemma eval_ctx_beta: "eval_ctx x E \<Longrightarrow> M \<rightarrow> N \<Longrightarrow> E[M <- x] \<rightarrow> E[N <- x]"
-  apply(binder_induction x E avoiding: M N E rule:eval_ctx.induct)
+  apply(binder_induction x E avoiding: M N E rule:eval_ctx.strong_induct)
   apply(auto intro:beta.intros)
   sorry (* this will work once binder_induction works*)
 
@@ -1190,6 +1242,15 @@ qed
 corollary eval_ctx_beta_star: "eval_ctx x E \<Longrightarrow> M \<rightarrow>* N \<Longrightarrow> E[M <- x] \<rightarrow>* E[N <- x]"
   using eval_ctx_betas beta_star_def by blast
 
+lemma div_ctx: 
+  "eval_ctx x E \<Longrightarrow> diverge Q \<Longrightarrow> diverge E[Q <- x]"
+proof(coinduction arbitrary: "Q" rule:diverge.coinduct)
+  case diverge
+  then obtain Q' where "Q \<rightarrow> Q'" and "diverge Q'" using diverge.cases by auto
+  then have "E[Q <- x] \<rightarrow> E[Q' <- x]" using eval_ctx_beta \<open>eval_ctx x E\<close> by blast
+  then show ?case using \<open>diverge Q'\<close> \<open>eval_ctx x E\<close> by auto
+qed
+
 lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightarrow> eval_ctx x E[Q <- y]"
   apply(induction rule:eval_ctx.induct)
   thm eval_ctx.intros
@@ -1199,39 +1260,57 @@ lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightar
   sorry
 
 lemma count_idle[simp]: "x \<notin> FVars M \<Longrightarrow> count_term x M = 0"
-  sorry
+  apply(binder_induction M avoiding: "App (Var x) M" rule:term.strong_induct)
+  apply(auto simp add: Int_Un_distrib)
+  done
 
 lemma count_eval_ctx: "eval_ctx hole E \<Longrightarrow> count_term hole E = 1"
-  apply(binder_induction hole E avoiding: "Var hole" rule:eval_ctx.induct)
+  apply(binder_induction hole E avoiding: "Var hole" rule:eval_ctx.strong_induct)
   apply(auto)
   sorry (*will work when binder induction works*)
 
-lemma count_subst: "x \<noteq> y \<Longrightarrow> count_term y M[Var y <- x] = count_term x M + count_term y M"
-  sorry
-
-lemma betas_pets:
-  "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow> P \<Longrightarrow> M \<rightarrow>[Suc m] P"
-  apply(induction rule:betas.induct)
-  apply(auto intro:betas.intros)
+lemma count_subst: "x \<noteq> y \<Longrightarrow> count_term y M[Q <- x] = (count_term x M)*(count_term y Q) + count_term y M"
+  apply(binder_induction M avoiding: "App (App M Q) (App (Var x) (Var y))" rule:term.strong_induct)
+          apply(auto simp add: Int_Un_distrib distrib_right)
+  subgoal premises prems for x1 x2 x3
+  proof -
+    have "dset x1 \<inter> FVars x2[Q <- x] = {}" 
+      using FVars_usubst[of x2 Q x] prems(4, 5, 6, 7)
+      by auto
+    then show ?thesis
+      using prems count_term_simps(9)[of y x1 "x2[Q <- x]" "x3[Q <- x]"]
+      by auto
+  qed
   done
 
-lemma beta_path_diff': 
-  assumes "M \<rightarrow>[n] N" shows "p \<ge> n \<Longrightarrow> M \<rightarrow>[p] P \<Longrightarrow> N \<rightarrow>[p-n] P"
-  using assms
-proof(induction rule:betas.induct) 
-(*We want to induct on the path M \<rightarrow>[n] N by stepping N rightward, but the induction rule of betas steps M leftward instead*)
-  case (refl M)
-  then show ?case using \<open>M \<rightarrow>[p] P\<close> by auto
+lemma betas_path_exists: 
+  "M \<rightarrow>[m] P \<Longrightarrow> n \<le> m \<Longrightarrow> \<exists>N. M \<rightarrow>[n] N \<and> N \<rightarrow>[m - n] P"
+proof (induction n)
+  case 0
+  then show ?case using betas.refl by auto
 next
-  case (step M' M n N)
-  (*assume "M \<rightarrow>[p] P"
-  then have "N \<rightarrow>[p - n] P" using \<open>Suc n \<le> p\<close> step.IH by auto*)
-  then show ?case sorry
+  case (Suc n)
+  then obtain N where "M \<rightarrow>[n] N" and "N \<rightarrow>[m - n] P" by auto
+  show ?case using \<open>N \<rightarrow>[m - n] P\<close> 
+  proof(cases rule:betas.cases)
+    case refl
+    then show ?thesis using \<open>Suc n \<le> m\<close> by auto
+  next
+    case (step N' n')
+    then have "n' = m - Suc n" by auto
+    moreover have "M \<rightarrow>[Suc n] N'" using \<open>M \<rightarrow>[n] N\<close> \<open>N \<rightarrow> N'\<close> betas_pets by auto
+    ultimately show ?thesis using \<open>N' \<rightarrow>[n'] P\<close> by auto
+  qed
 qed
 
 lemma beta_path_diff: 
-  "p \<ge> n \<Longrightarrow> M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[p] P \<Longrightarrow> N \<rightarrow>[p-n] P"
-  using beta_path_diff' by blast
+  "M \<rightarrow>[p] P \<Longrightarrow> n \<le> p \<Longrightarrow> M \<rightarrow>[n] N \<Longrightarrow> N \<rightarrow>[p-n] P"
+proof -
+  assume "M \<rightarrow>[p] P" and "n \<le> p" and \<open>M \<rightarrow>[n] N\<close>
+  then obtain N' where "M \<rightarrow>[n] N'" and "N' \<rightarrow>[p - n] P" using betas_path_exists by blast
+  then have "N' = N" using \<open>M \<rightarrow>[n] N\<close> betas_deterministic by auto
+  then show ?thesis using \<open>N' \<rightarrow>[p - n] P\<close> by auto
+qed
 
 lemma normalize_longest_beta: 
   "normal N \<Longrightarrow> M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[m] M' \<Longrightarrow> n \<ge> m"
@@ -1246,6 +1325,30 @@ proof (rule ccontr)
   qed(auto)
 qed
 
+lemma beta_subst_unblocked:
+  "M \<rightarrow> N \<Longrightarrow> \<not> blocked z M \<Longrightarrow> M[Q <- z] \<rightarrow> N[Q <- z]"
+proof(binder_induction M N avoiding: "App M (App (Var z) Q)" rule:beta.strong_induct)
+  case (OrdApp2 N N' f x M)
+  then have "\<not> blocked z N" using 
+      blocked_inductive(2) by blast
+  then show ?case using OrdApp2 by (auto intro: beta.intros)
+next
+  case (OrdPair2 V Na N')
+  then have "\<not> blocked z Na" using 
+      blocked_inductive by fast
+  then show ?case using OrdPair2 beta.intros(6)
+    sorry
+next
+  case (OrdLet Ma M' xy Na)
+  then show ?case sorry
+next
+  case (Let xy V W Ma)
+  then show ?case sorry
+next
+  case (FixBeta f xa Ma V)
+  then show ?case sorry
+qed(auto intro:beta.intros blocked_inductive)
+
 lemma my_induct[case_names lex]:
   assumes "\<And>n N. (\<And>m M. m < n \<Longrightarrow> P m x M) \<Longrightarrow> (\<And>M. count_term x M < count_term x N \<Longrightarrow> P n x M) \<Longrightarrow> P n x N"
   shows "P (n :: nat) x (N :: 'a :: var term)"
@@ -1254,7 +1357,7 @@ lemma my_induct[case_names lex]:
   done
 
 lemma b4:
-  assumes "M[N <- x] \<rightarrow>[k] P" and "normal P" and "Q \<lesssim> N"
+  assumes "M[N <- x] \<rightarrow>[k] P" and "normal P" and "Q \<lesssim> N" and "x \<notin> FVars N" 
   shows "diverge M[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M[Q <- x] \<rightarrow>[m] M'[Q <- x])"
   using assms
 proof (induct k x M rule: my_induct)
@@ -1272,9 +1375,10 @@ proof (induct k x M rule: my_induct)
     proof (cases "blocked x M")
       case True
       then obtain hole E where "eval_ctx hole E" and "M = E[Var x <- hole]" 
-        using blocked_def[of x M] by auto
-      moreover have "hole \<noteq> x" and "hole \<notin> FVars Q \<union> FVars N" sorry (* hole freshness *)
-      ultimately have "M[N <- x] = E[N <- x][N <- hole]" and "M[Q <- x] = E[Q <- x][Q <- hole]"
+        and "hole \<noteq> x" and "hole \<notin> FVars Q \<union> FVars N"
+        using blocked_fresh_hole[of "FVars Q \<union> FVars N \<union> {x}" x M]
+        by auto
+      then have "M[N <- x] = E[N <- x][N <- hole]" and "M[Q <- x] = E[Q <- x][Q <- hole]"
         using usubst_usubst[of hole x N E "Var x"] usubst_usubst[of hole x Q E "Var x"]
         by auto
       have "eval_ctx hole E[Q <- x]" and "eval_ctx hole E[N <- x]"
@@ -1283,37 +1387,61 @@ proof (induct k x M rule: my_induct)
       proof (cases "diverge Q")
         case True
         then have "diverge M[Q <- x]" 
-          using div_ctx[of Q hole "E[Q <- x]"] \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close>
+          using div_ctx[of hole "E[Q <- x]" Q] \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close>
           using \<open>eval_ctx hole E[Q <- x]\<close> by auto
         then show ?thesis by simp
       next
         case False
         then obtain N' where "normal N'" and "N \<rightarrow>* N'" and "Q \<rightarrow>* N'"
-          using less_defined_def \<open>Q \<lesssim> N\<close> diverge_or_normalize[of Q] by auto
-        then have "M[N <- x] \<rightarrow>* E[N <- x][N' <- hole]" and "M[Q <- x] \<rightarrow>* E[Q <- x][N' <- hole]"
+          using less_defined_def \<open>Q \<lesssim> N\<close> diverge_or_normalizes[of Q] by auto
+        moreover have "x \<notin> FVars N'" using \<open>x \<notin> FVars N\<close> \<open>N \<rightarrow>* N'\<close> FVars_beta_star by auto
+        ultimately have "M[N <- x] \<rightarrow>* E[N <- x][N' <- hole]" and "M[Q <- x] \<rightarrow>* E[Q <- x][N' <- hole]"
           using \<open>M[N <- x] = E[N <- x][N <- hole]\<close> \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close> 
           using \<open>eval_ctx hole E[N <- x]\<close> \<open>eval_ctx hole E[Q <- x]\<close>
           using eval_ctx_beta_star
           by auto
-        then obtain m where "E[N <- x][N' <- hole] \<rightarrow>[m] P" and "m \<le> k"
+        then obtain m where steps: "E[N <- x][N' <- hole] \<rightarrow>[m] P" and steps_less: "m \<le> k"
           using beta_star_def[of "M[N <- x]"] lex(3) lex(4)
           using normalize_longest_beta[of P "M[N <- x]" k _ "E[N <- x][N' <- hole]"] 
-          using beta_path_diff[of _ k "M[N <- x]" "E[N <- x][N' <- hole]" P]
+          using beta_path_diff[of _]
           using diff_le_self by blast
-        moreover have "count_term x E[N' <- hole] = count_term x M - 1"
-          using count_subst[of hole x E] sorry
-          (* count_term x E[N' <- hole] = count_term x E[Var x <- hole] - 1 
-             show x \<notin> FVars N' first?*)
-        ultimately have "E[N' <- hole][Q <- x] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[N' <- hole][Q <- x] \<rightarrow>[m] M'[Q <- x])"
-          using \<open>normal P\<close> \<open>Q \<lesssim> N\<close> lex(2)[of "E[N' <- hole]"] sorry (*the current IH needs m = k instead of m \<le> k*)
+        have counts_less: "count_term x E[N' <- hole] < count_term x M"
+        proof -
+          have "count_term x E[N' <- hole] = count_term x E"
+            using count_subst[of hole x E N'] \<open>x \<notin> FVars N'\<close> count_idle[of x N'] \<open>hole \<noteq> x\<close>
+            by auto
+          also have "... < count_term x M"
+            using count_subst[of hole x E "Var x"] \<open>hole \<noteq> x\<close> \<open>M = E[Var x <- hole]\<close> 
+            using count_eval_ctx[of hole E] \<open>eval_ctx hole E\<close> by force
+          finally show ?thesis by simp
+        qed
+        have steps': "E[N' <- hole][N <- x] \<rightarrow>[m] P"
+          using steps usubst_usubst[of x hole] \<open>hole \<noteq> x\<close> \<open>x \<notin> FVars N'\<close> \<open>hole \<notin> FVars Q \<union> FVars N\<close>
+          by auto
+        have "E[N' <- hole][Q <- x] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[N' <- hole][Q <- x] \<rightarrow>[m] M'[Q <- x])"
+        proof(cases "m = k")
+          case True
+          then show ?thesis 
+            using counts_less \<open>normal P\<close> \<open>Q \<lesssim> N\<close> \<open>x \<notin> FVars N\<close> steps'
+            using lex(2)[of "E[N' <- hole]"]
+            by auto
+        next
+          case False
+          then have "m < k" using steps_less by auto
+          then show ?thesis
+            using steps' \<open>normal P\<close> \<open>Q \<lesssim> N\<close> \<open>x \<notin> FVars N\<close>
+            using lex(1)[of m "E[N' <- hole]"]
+            by blast
+        qed
         then have "E[Q <- x][N' <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][N' <- hole] \<rightarrow>[m] M'[Q <- x])"
-          sorry (* require exchange of subst, but I dont think this is true in general. Maybe assume x \<notin> FVars N'?*)
+          using steps usubst_usubst[of x hole] \<open>hole \<noteq> x\<close> \<open>x \<notin> FVars N'\<close> \<open>hole \<notin> FVars Q \<union> FVars N\<close>
+          by auto
         moreover have "E[Q <- x][Q <- hole] \<rightarrow>* E[Q <- x][N' <- hole]"
           using eval_ctx_beta_star[of hole "E[Q <- x]" Q N'] \<open>Q \<rightarrow>* N'\<close> \<open>eval_ctx hole E[Q <- x]\<close>
           by blast
         ultimately have "E[Q <- x][Q <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][Q <- hole] \<rightarrow>[m] M'[Q <- x])"
           using beta_star_diverge[of "E[Q <- x][Q <- hole]" "E[Q <- x][N' <- hole]"]
-          using beta_path_sum beta_star_def
+          using betas_path_sum beta_star_def
           by blast
         then show ?thesis using \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close> by auto
       qed
@@ -1326,7 +1454,7 @@ proof (induct k x M rule: my_induct)
       then have "diverge M''[Q <- x] \<or> (\<exists>m M'. P = M'[N <- x] \<and> M''[Q <- x] \<rightarrow>[m] M'[Q <- x])"
         using step(1) lex.prems lex(1)[of k' M''] by simp
       moreover have "M[Q <- x] \<rightarrow> M''[Q <- x]"
-        using \<open>M \<rightarrow> M''\<close> beta_usubst sorry (*maybe make use of M[N <- x] \<rightarrow> P' = M''[N <- x]*)
+        using beta_subst_unblocked \<open>M \<rightarrow> M''\<close> \<open>\<not> blocked x M\<close> by auto
       ultimately show ?thesis
         using diverge.intros[of "M[Q <- x]" "M''[Q <- x]"]
         using betas.step[of "M[Q <- x]" "M''[Q <- x]" _ _]
