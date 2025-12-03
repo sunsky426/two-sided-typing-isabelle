@@ -261,9 +261,14 @@ lemma beta_usubst: "M \<rightarrow> N \<Longrightarrow> val V \<Longrightarrow> 
 lemma FVars_beta: "M \<rightarrow> N \<Longrightarrow> FVars N \<subseteq> FVars M"
   apply(binder_induction M N avoiding: "App M N" rule:beta.strong_induct)
                apply(auto)
-  subgoal for V f x M z
-    sorry
-  sorry
+  subgoal premises prems for V f x M z
+  proof -
+    have "FVars M[V <- x][Fix f x M <- f] \<subseteq> FVars M \<union> FVars V"
+      using FVars_usubst fresh_subst by fastforce
+    then have "z \<in> FVars M" using prems(2, 3) by auto
+    then show ?thesis by auto
+  qed
+  done
 
 corollary FVars_betas: "M \<rightarrow>[n] N \<Longrightarrow> FVars N \<subseteq> FVars M"
   apply(induction rule:betas.induct)
