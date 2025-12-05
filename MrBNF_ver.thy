@@ -134,6 +134,33 @@ inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> boo
 | PredS: "num n \<Longrightarrow> Pred (Succ n) \<rightarrow> n"
 | FixBeta: "val V \<Longrightarrow> App (Fix f x M) V \<rightarrow> M[V <- x][Fix f x M <- f]"
 
+inductive betas :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var term \<Rightarrow> bool"  ("_ \<rightarrow>[_] _" [70, 0, 70] 70) where
+  refl: "M \<rightarrow>[0] M"
+| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>[n] P \<rbrakk> \<Longrightarrow> M \<rightarrow>[Suc n] P"
+
+definition beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" (infix "\<rightarrow>*" 70) where
+  "M \<rightarrow>* N = (\<exists>n. M \<rightarrow>[n] N)"
+
+coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
+  "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
+
+definition normal :: "'var::var term \<Rightarrow> bool" where
+  "normal N \<equiv> (\<not>(\<exists>N'. N \<rightarrow> N'))"
+
+definition normalizes :: "'var::var term \<Rightarrow> bool" where
+  "normalizes M \<equiv> \<exists>N. normal N \<and> M \<rightarrow>* N"
+
+lemma nums_are_normal: "num V \<Longrightarrow> normal V"
+  apply(induction rule:num.induct)
+   apply(auto elim:beta.cases simp add:normal_def)
+  done
+
+lemma vals_are_normal: "val V \<Longrightarrow> normal V"
+  apply(induction rule:val.induct)
+  apply(auto elim:elim:nums_are_normal)
+  apply(auto elim:beta.cases simp add:normal_def)
+  done
+
 lemma beta_deterministic: "M \<rightarrow> N \<Longrightarrow> M \<rightarrow> N' \<Longrightarrow> N = N'"
   apply(induction M N arbitrary: N' rule:beta.induct)
   subgoal premises prems for M N f x Q N' using prems(3) 
@@ -142,10 +169,6 @@ lemma beta_deterministic: "M \<rightarrow> N \<Longrightarrow> M \<rightarrow> N
                  apply(auto simp add: prems(1, 2) elim:beta.cases)
     sorry
   sorry
-
-inductive betas :: "'var::var term \<Rightarrow> nat \<Rightarrow> 'var::var term \<Rightarrow> bool"  ("_ \<rightarrow>[_] _" [70, 0, 70] 70) where
-  refl: "M \<rightarrow>[0] M"
-| step: "\<lbrakk> M \<rightarrow> N; N \<rightarrow>[n] P \<rbrakk> \<Longrightarrow> M \<rightarrow>[Suc n] P"
 
 lemma betas_pets:
   "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow> P \<Longrightarrow> M \<rightarrow>[Suc m] P"
@@ -170,11 +193,28 @@ proof(induction n arbitrary: M)
   ultimately show ?case using Suc.IH by simp
 qed(auto elim:betas.cases)
 
-definition beta_star :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" (infix "\<rightarrow>*" 70) where
-  "M \<rightarrow>* N = (\<exists>n. M \<rightarrow>[n] N)"
+lemma normalizes_stepsTo_normalizes: "M \<rightarrow> N \<Longrightarrow> normalizes N \<Longrightarrow> normalizes M"
+  using normalizes_def beta_star_def betas.intros by blast
 
-coinductive diverge :: "'var::var term \<Rightarrow> bool" ("_ \<Up>" 80) where
-  "M \<rightarrow> N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
+definition less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<lesssim>" 90) where
+  "P \<lesssim> Q \<equiv> normalizes P \<longrightarrow> (\<exists>N. normal N \<and> P \<rightarrow>* N \<and> Q \<rightarrow>* N)"
+
+thm diverge.coinduct
+
+lemma diverge_or_normalizes: "diverge M \<or> normalizes M"
+proof(rule disjCI)
+  assume "\<not> normalizes M"
+  then show "M \<Up>"
+  proof (coinduction arbitrary: M rule:diverge.coinduct)
+    case diverge
+    have "\<not> normal M" 
+      using \<open>\<not> normalizes M\<close> normalizes_def beta_star_def betas.intros by blast
+    then obtain N where "M \<rightarrow> N" using normal_def by auto
+    then have "\<not> normalizes N" 
+      using normalizes_stepsTo_normalizes diverge by auto
+    then show ?case using \<open>M \<rightarrow> N\<close> by auto
+  qed
+qed
 
 lemma betas_diverge:
   assumes "M \<rightarrow>[n] N" and "N \<Up>" shows "M \<Up>"
@@ -188,7 +228,7 @@ corollary beta_star_diverge:
   "M \<rightarrow>* N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
   using betas_diverge beta_star_def by blast
 
-lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
+(*lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
 proof (induction M)
   case (6 M N)
   then show ?case
@@ -198,6 +238,7 @@ next
   then show ?case
     by (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
 qed (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+*)
 
 binder_inductive (no_auto_equiv) val
   sorry (*TODO: Dmitriy*)
@@ -382,35 +423,6 @@ inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 
 binder_inductive (no_auto_equiv) eval_ctx
   sorry
-
-definition normal :: "'var::var term \<Rightarrow> bool" where
-  "normal N \<equiv> (\<not>(\<exists>N'. N \<rightarrow> N'))"
-
-definition normalizes :: "'var::var term \<Rightarrow> bool" where
-  "normalizes M \<equiv> \<exists>N. normal N \<and> M \<rightarrow>* N"
-
-lemma normalizes_stepsTo_normalizes: "M \<rightarrow> N \<Longrightarrow> normalizes N \<Longrightarrow> normalizes M"
-  using normalizes_def beta_star_def betas.intros by blast
-
-definition less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<lesssim>" 90) where
-  "P \<lesssim> Q \<equiv> normalizes P \<longrightarrow> (\<exists>N. normal N \<and> P \<rightarrow>* N \<and> Q \<rightarrow>* N)"
-
-thm diverge.coinduct
-
-lemma diverge_or_normalizes: "diverge M \<or> normalizes M"
-proof(rule disjCI)
-  assume "\<not> normalizes M"
-  then show "M \<Up>"
-  proof (coinduction arbitrary: M rule:diverge.coinduct)
-    case diverge
-    have "\<not> normal M" 
-      using \<open>\<not> normalizes M\<close> normalizes_def beta_star_def betas.intros by blast
-    then obtain N where "M \<rightarrow> N" using normal_def by auto
-    then have "\<not> normalizes N" 
-      using normalizes_stepsTo_normalizes diverge by auto
-    then show ?case using \<open>M \<rightarrow> N\<close> by auto
-  qed
-qed
 
 section \<open>B2\<close>
 
@@ -700,7 +712,8 @@ lemma subst_Let_inversion:
 lemma subst_num_inversion: "num m \<Longrightarrow> \<not> blocked z n \<Longrightarrow> n[N <- z] = m \<Longrightarrow> n = m"
 proof (induction arbitrary: n rule:num.induct)
   case 1
-  then show ?case using subst_Zero_inversion by auto
+  moreover have "n \<noteq> Var z" using blocked_inductive(1) \<open>\<not> blocked z n\<close> by auto
+  ultimately show ?case using subst_Zero_inversion by auto
 next
   case (2 m')
   obtain n' where "n = Succ n'" and "n'[N <- z] = m'" and "\<not> blocked z n'"
@@ -1265,13 +1278,16 @@ proof(coinduction arbitrary: "Q" rule:diverge.coinduct)
   then show ?case using \<open>diverge Q'\<close> \<open>eval_ctx x E\<close> by auto
 qed
 
-lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightarrow> eval_ctx x E[Q <- y]"
+thm eval_ctx.intros
+
+lemma val_subst: "val V \<Longrightarrow> V \<noteq> Var x \<Longrightarrow> val V[Q <- x]"
+  apply(binder_induction V avoiding: "App Q (Var x)" rule: val.strong_induct)
+  apply(auto intro:val.intros)
+
+lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightarrow> x \<notin> FVars Q \<Longrightarrow> eval_ctx x E[Q <- y]"
   apply(induction rule:eval_ctx.induct)
-  thm eval_ctx.intros
-  apply(auto intro:eval_ctx.intros FVars_usubst) 
-  (* want to show hole \<notin> N[Q <- y] in every case, but idk how to tell this to Isabelle*)
-  using eval_ctx.intros FVars_usubst
-  sorry
+  apply(auto intro:eval_ctx.intros simp add:fresh_subst)
+  sorry (*Questionably True*)
 
 lemma count_idle[simp]: "x \<notin> FVars M \<Longrightarrow> count_term x M = 0"
   apply(binder_induction M avoiding: "App (Var x) M" rule:term.strong_induct)
@@ -1331,7 +1347,7 @@ lemma normalize_longest_beta:
 proof (rule ccontr)
   assume normalN: "normal N" and "M \<rightarrow>[n] N" and "M \<rightarrow>[m] M'" and "\<not> m \<le> n"
   then have "N \<rightarrow>[m-n] M'" 
-    using beta_path_diff[of n m M N M'] by auto
+    using beta_path_diff[of M m M' n] by auto
   then show False using \<open>\<not> m \<le> n\<close>
   proof (cases rule:betas.cases)
     case (step N n)
@@ -1400,7 +1416,7 @@ proof (induct k x M rule: my_induct)
       show ?thesis
       proof (cases "diverge Q")
         case True
-        then have "diverge M[Q <- x]" 
+        then have "diverge M[Q <- x]"
           using div_ctx[of hole "E[Q <- x]" Q] \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close>
           using \<open>eval_ctx hole E[Q <- x]\<close> by auto
         then show ?thesis by simp
@@ -1477,20 +1493,112 @@ proof (induct k x M rule: my_induct)
   qed
 qed
 
-inductive b5_prop :: "'var::var term \<Rightarrow> bool" where
-  "(V \<noteq> Fix _ _ _ \<Longrightarrow> W = V) \<Longrightarrow> b5_prop W" (* no correct, should be if V has Fix _ _ _ as subterm. Is there is subterm predicate defined?*)
-| "(V = Pair V1 V2 \<Longrightarrow> W = Pair W1[P <- z] W2[P <- z] \<and> W1[N <- z] = V1 \<and> W2[N <- z] = V2) \<Longrightarrow> b5_prop W"
-| "(V = Fix f x P \<Longrightarrow> W = Fix f x Q[P <- z] \<and> Q[N <- z] = P) \<Longrightarrow> b5_prop W"
+section \<open>B5\<close>
+
+inductive b5_prop :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool" where
+  "(V \<noteq> Fix _ _ _ \<Longrightarrow> W = V) \<Longrightarrow> b5_prop V W" (* no correct, should be if V has Fix _ _ _ as subterm. Is there is subterm predicate defined?*)
+| "(V = Pair V1 V2 \<Longrightarrow> W = Pair W1[P <- z] W2[P <- z] \<and> W1[N <- z] = V1 \<and> W2[N <- z] = V2) \<Longrightarrow> b5_prop V W"
+| "(V = Fix f x P \<Longrightarrow> W = Fix f x Q[P <- z] \<and> Q[N <- z] = P) \<Longrightarrow> b5_prop V W"
+
+lemma b5_prop_reflexive: "b5_prop M M"
+  apply(auto intro:b5_prop.intros)
+  done
 
 lemma b5:
-  assumes "M[N <- z] = V" and "val V" and "P \<lesssim> N"
-  shows "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>* W \<and> b5_prop W)"
-  sorry
+  assumes "z \<notin> FVars N" and "M[N <- z] \<rightarrow>* V" and "val V" and "P \<lesssim> N"
+  shows "diverge M[P <- z] \<or> (\<exists>W. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W)"
+proof(cases "diverge M[P <- z]")
+  case False
+  then obtain U where "V = U[N <- z]" and "M[P <- z] \<rightarrow>* U[P <- z]"
+    using b4[of M N z _ V P] beta_star_def
+    using assms vals_are_normal
+    by blast
+  then show ?thesis
+  proof (cases "U = Var z")
+    case True
+    then have "N = V" and "M[P <- z] \<rightarrow>* P"
+      using \<open>V = U[N <- z]\<close> \<open>M[P <- z] \<rightarrow>* U[P <- z]\<close> by auto
+    then show ?thesis
+    proof (cases "diverge P")
+      case True
+      then have "diverge M[P <- z]"
+        using \<open>M[P <- z] \<rightarrow>* P\<close> beta_star_diverge by blast
+      then show ?thesis by auto
+    next
+      case False
+      then have "normalizes P" using diverge_or_normalizes by auto
+      then obtain N' where "normal N'" and "P \<rightarrow>* N'" and "N \<rightarrow>* N'"
+        using less_defined_def \<open>P \<lesssim> N\<close> by auto
+      moreover have "N = N'" 
+        using \<open>N = V\<close> \<open>val V\<close> vals_are_normal beta_star_def betas.cases normal_def
+        by (metis calculation(3))
+      ultimately have "P \<rightarrow>* V"
+        using \<open>P \<lesssim> N\<close> \<open>N = V\<close> by simp
+      then have "val V \<and> M[P <- z] \<rightarrow>* V \<and> b5_prop V V"
+        using betas_path_sum beta_star_def
+        using \<open>val V\<close> \<open>M[P <- z] \<rightarrow>* P\<close> b5_prop_reflexive 
+        by metis
+      then show ?thesis by auto
+    qed
+  next
+    case False
+    have "M[N <- z] \<rightarrow>* V \<Longrightarrow> V = U[N <- z] \<Longrightarrow> M[P <- z] \<rightarrow>* U[P <- z] \<Longrightarrow> ?thesis" 
+      using \<open>val V\<close>
+      proof (induction V arbitrary: M rule:val.induct)
+      case (1 x)
+      then have "U = Var x" 
+        using False subst_Var_inversion[of U N z x] by simp
+      then have "x \<noteq> z" using False by simp
+      then have "U[P <- z] = Var x" using \<open>U = Var x\<close> subst_idle by auto
+      then have "val (Var x) \<and> M[P <- z] \<rightarrow>* (Var x) \<and> b5_prop (Var x) (Var x)" 
+        using \<open>M[P <- z] \<rightarrow>* U[P <- z]\<close> b5_prop_reflexive val.intros by auto
+      then show ?case by auto
+    next
+      case (2 n)
+      then show ?case
+      proof (induction n arbitrary: M rule:num.induct)
+        case 1
+        then have "U = Zero" using False subst_Zero_inversion by metis
+        then have "U[P <- z] = Zero" using subst_idle by simp
+        then have "val Zero \<and> M[P <- z] \<rightarrow>* Zero \<and> b5_prop Zero Zero"
+          using \<open>M[P <- z] \<rightarrow>* U[P <- z]\<close> b5_prop_reflexive val.intros num.intros by auto
+        then show ?case by auto
+      next
+        case (2 n)
+        then obtain W' where "U = Succ W'" and "W'[N <- z] = n"
+          using False subst_Succ_inversion[of U N z n] by auto
+        then obtain W where "val W \<and> W'[P <- z] \<rightarrow>* W \<and> b5_prop n W"
+          using beta_star_def betas.intros sorry
+        then show ?case sorry
+      qed
+    next
+      case (3 V1 V2)
+      then obtain M1 M2 where "U = Pair M1 M2" 
+        and "M1[N <- z] = V1" and "M2[N <- z] = V2"
+        using subst_Pair_inversion[of U N z V1 V2] \<open>U \<noteq> Var z\<close> 
+        by metis
+      then have "val M1" and "val M2"
+        using subst_val_inversion 3(1, 2) (*what if M1 or M2 = Suc z, N = Zero*) sorry
+      have "M1[P <- z] = V1" and "M2[P <- z] = V2" using 3(2) sorry
+      have "val V \<and> M[P <- z] \<rightarrow>* V \<and> b5_prop (term.Pair V1 V2) V" sorry
+      then show ?case sorry
+    next
+      case (4 f x M)
+      then obtain Q where "U = Fix f x Q" and "Q[N <- z] = P"
+        using subst_Fix_inversion[where M=U and t=N and x=z]
+        using \<open>U \<noteq> Var z\<close> sorry (*need binder_inductive*)
+      then show ?case sorry
+    qed
+    then show ?thesis
+      using \<open>M[N <- z] \<rightarrow>* V\<close> \<open>V = U[N <- z]\<close> \<open>M[P <- z] \<rightarrow>* U[P <- z]\<close> 
+      by auto
+  qed
+qed(auto)
+  
 
 lemma b6:
   assumes "stuck M[N <- z]" and "P \<lesssim> N"
   shows "diverge M[P <- z] \<or> stuck M[P <- z]"
   sorry
 
-term FVars
 end
