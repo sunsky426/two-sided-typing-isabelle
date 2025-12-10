@@ -432,7 +432,14 @@ definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 
 lemma blocked_fresh_hole:
   assumes "finite A" 
-  shows "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]) \<and> hole \<notin> A)"
+  shows "blocked z M = (\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> A)"
+proof (rule iffI)
+  obtain hole where "hole \<notin> insert z (A \<union> FVars M)"
+    by (metis arb_element assms finite_FVars finite_Un finite_insert)
+  assume "blocked z M"
+  then obtain hole0 E0 where "eval_ctx hole0 E0" "M = E0[Var z <- hole0]" unfolding blocked_def by blast
+  then show "\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> A"
+    apply (binder_induction hole0 E0 avoiding:  rule: eval_ctx.strong_induct)
   sorry
 
 lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> eval_ctx y E[Var y <- x]"
@@ -440,8 +447,25 @@ lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longright
   apply(binder_induction x E avoiding: y rule: eval_ctx.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
   apply(auto simp add:eval_ctx.intros)
 *)  sorry
+thm eval_ctx.strong_induct[no_vars]
 
+lemma "eval_ctx (x1 :: 'a) x2 \<Longrightarrow>
+(\<And>p. |K p :: 'a set| <o |UNIV :: 'a :: var set| ) \<Longrightarrow>
+(\<And>hole p. P hole (Var hole) p) \<Longrightarrow>
+(\<And>hole E M f x p. {f, x} \<inter> K p = {} \<Longrightarrow> eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars M \<Longrightarrow> P hole (App (Fix f x M) E) p) \<Longrightarrow>
+(\<And>hole E N p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> P hole (App E N) p) \<Longrightarrow>
+(\<And>hole E p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> P hole (Succ E) p) \<Longrightarrow>
+(\<And>hole E p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> P hole (Pred E) p) \<Longrightarrow>
+(\<And>hole E N p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> P hole (term.Pair E N) p) \<Longrightarrow>
+(\<And>V hole E p. val V \<Longrightarrow> eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars V \<Longrightarrow> P hole (term.Pair V E) p) \<Longrightarrow>
+(\<And>hole E N xy p. dset xy \<inter> K p = {} \<Longrightarrow> eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> dset xy \<Longrightarrow> P hole (term.Let xy E N) p) \<Longrightarrow>
+(\<And>hole E N Pa p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> FVars Pa \<Longrightarrow> P hole (term.If E N Pa) p) \<Longrightarrow> \<forall>p. P x1 x2 p"
+  apply (rule eval_ctx.strong_induct[where K=K])
+            apply simp_all
 lemma eval_ctxt_FVars: "eval_ctx x E \<Longrightarrow> x \<in> FVars E"
+  apply (binder_induction x E avoiding: x rule: eval_ctx.strong_induct[unfolded Int_Un_distrib2])
+  thm eval_ctx.strong_induct[unfolded Int_Un_distrib2 Un_empty]
+  find_theorems ""
   by (induct x E rule: eval_ctx.induct) auto
 
 lemma SSupp_term_Var[simp]: "SSupp Var Var = {}"
