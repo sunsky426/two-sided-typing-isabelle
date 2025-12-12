@@ -164,14 +164,221 @@ lemma vals_are_normal: "val V \<Longrightarrow> normal V"
   apply(auto elim:beta.cases simp add:normal_def)
   done
 
-lemma beta_deterministic: "M \<rightarrow> N \<Longrightarrow> M \<rightarrow> N' \<Longrightarrow> N = N'"
-  apply(induction M N arbitrary: N' rule:beta.induct)
-  subgoal premises prems for M N f x Q N' using prems(3) 
-    apply - 
-    apply(erule beta.cases) 
-                 apply(auto simp add: prems(1, 2) elim:beta.cases)
-    sorry
+binder_inductive (no_auto_equiv) val
+  sorry (*TODO: Dmitriy*)
+
+binder_inductive (no_auto_equiv) beta
+  sorry (*TODO: Dmitriy*)
+
+lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV :: 'a set| \<Longrightarrow>
+(\<And>\<rho>. P Zero \<rho>) \<Longrightarrow>
+(\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Succ x) \<rho>) \<Longrightarrow>
+(\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Pred x) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 x3 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.If x1 x2 x3) \<rho>) \<Longrightarrow>
+(\<And>x \<rho>. P (Var x) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> P (App x1 x2) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 x3 \<rho>. {x1, x2} \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (Fix x1 x2 x3) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> P (term.Pair x1 x2) \<rho>) \<Longrightarrow>
+(\<And>x1 x2 x3 \<rho>. dset x1 \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.Let x1 x2 x3) \<rho>) \<Longrightarrow> \<forall>\<rho>. P t \<rho>"
+  by (rule term.strong_induct) auto
+(*
+lemma premute_term_subst: "bij \<sigma> \<Longrightarrow> |supp \<sigma>| <o |UNIV :: 'a ::var set| \<Longrightarrow> |SSupp Var f :: 'a set| <o |UNIV :: 'a set| \<Longrightarrow> id_on (FVars M - SSupp Var f) \<sigma> \<Longrightarrow>
+  subst f (permute_term \<sigma> M) = subst (f o \<sigma>) M"
+  apply (binder_induction M avoiding: M "IImsupp Var FVars f" "imsupp \<sigma>" rule: term_strong_induct)
+            apply (metis SSupp_Inj_bound term.IImsupp_Sb_bound term.Sb_comp_Inj)
+  using imsupp_supp_bound infinite_UNIV apply blast
+          apply (auto simp: Un_Diff id_on_Un bij_implies_inject)
+   apply (subst (1 2) term.subst)
+  apply blast
   sorry
+  apply (simp add: id_on_def)
+*)
+(*
+  apply (smt (verit, best) Diff_iff Diff_insert2 Diff_insert_absorb bij_id_imsupp
+      id_on_def in_imsupp not_in_imsupp_same not_in_supp_alt usubst_simps(7))
+  apply (smt (verit, del_insts) Diff_iff Diff_insert2 Diff_triv Int_Un_emptyI1 Int_commute
+      Int_emptyD Int_image_imsupp One_nat_def Sup_UNIV Sup_UNIV bij_imsupp_supp_ne
+      disjoint_iff_not_equal dmap_def dmap_def dpair.map_id0 dpair.rel_Grp dpair.set_map
+      dset_def fun.rel_eq fun.rel_eq id_on_def in_imsupp not_in_imsupp_same
+      not_in_supp_alt set_diff_eq term.FVars_permute term.inject(8) term.map(9)
+      term.permute(9) term.vvsubst_permute usubst_simps(9))
+  done
+*)
+
+lemma premute_term_usubst: "bij \<sigma> \<Longrightarrow> |supp \<sigma>| <o |UNIV :: 'a ::var set| \<Longrightarrow> id_on (FVars M - {x::'a}) \<sigma> \<Longrightarrow>
+  (permute_term \<sigma> M)[V <- \<sigma> x] = M[V <- x]"
+(*
+  unfolding usubst_def
+  apply (subst premute_term_subst)
+      apply (auto simp: bij_implies_inject id_on_def SSupp_def intro!: term.Sb_cong)
+  subgoal for y
+    apply (cases "x = y")
+     apply auto
+    sledgehammer
+
+  sorry
+*)
+
+  apply (binder_induction M avoiding: M V x "supp \<sigma>" rule: term_strong_induct)
+           apply (auto simp: Un_Diff id_on_Un bij_implies_inject)
+  apply (smt (verit, best) Diff_iff Diff_insert2 Diff_insert_absorb bij_id_imsupp
+      id_on_def in_imsupp not_in_imsupp_same not_in_supp_alt usubst_simps(7))
+  apply (smt (verit, del_insts) Diff_iff Diff_insert2 Diff_triv Int_Un_emptyI1 Int_commute
+      Int_emptyD Int_image_imsupp One_nat_def Sup_UNIV Sup_UNIV bij_imsupp_supp_ne
+      disjoint_iff_not_equal dmap_def dmap_def dpair.map_id0 dpair.rel_Grp dpair.set_map
+      dset_def fun.rel_eq fun.rel_eq id_on_def in_imsupp not_in_imsupp_same
+      not_in_supp_alt set_diff_eq term.FVars_permute term.inject(8) term.map(9)
+      term.permute(9) term.vvsubst_permute usubst_simps(9))
+  done
+
+
+lemma fresh_usubst[simp]: "x \<notin> FVars t \<Longrightarrow> x \<notin> FVars s \<Longrightarrow> x \<notin> FVars (t[s <- y])"
+  by (binder_induction t avoiding: t s y rule: term_strong_induct)
+    (auto simp: Int_Un_distrib)
+
+lemma subst_idle[simp]: "y \<notin> FVars t \<Longrightarrow> t[s <- y] = t"
+  by (binder_induction t avoiding: t s y rule: term_strong_induct) (auto simp: Int_Un_distrib)
+
+lemma FVars_usubst: "FVars M[N <- z] = FVars M - {z} \<union> (if z \<in> FVars M then FVars N else {})"
+  unfolding usubst_def
+  by (auto simp: term.Vrs_Sb split: if_splits)
+
+lemma usubst_usubst: "y1 \<noteq> y2 \<Longrightarrow> y1 \<notin> FVars s2 \<Longrightarrow> t[s1 <- y1][s2 <- y2] = t[s2 <- y2][s1[s2 <- y2] <- y1]"
+  apply (binder_induction t avoiding: t y1 y2 s1 s2 rule: term_strong_induct)
+          apply (auto simp: Int_Un_distrib FVars_usubst split: if_splits)
+  apply (subst (1 2) usubst_simps; auto simp: FVars_usubst split: if_splits)
+  done
+
+lemma dsel_dset[simp]: "dfst xy \<in> dset xy" "dsnd xy \<in> dset xy"
+  by (transfer; auto)+
+
+lemma premute_term_usubst2: "bij \<sigma> \<Longrightarrow> |supp \<sigma>| <o |UNIV :: 'a ::var set| \<Longrightarrow> id_on (FVars M - {x::'a, y}) \<sigma> \<Longrightarrow> {y, \<sigma> y} \<inter> FVars V = {} \<Longrightarrow>
+  (permute_term \<sigma> M)[V <- \<sigma> x][W <- \<sigma> y] = M[V <- x][W <- y]"
+  apply (binder_induction M avoiding: M V W x y "supp \<sigma>" rule: term_strong_induct)
+           apply (auto simp: Un_Diff id_on_Un bij_implies_inject)
+  apply (smt (verit, best) Diff_iff Diff_insert2 Diff_insert_absorb bij_id_imsupp
+      id_on_def in_imsupp not_in_imsupp_same not_in_supp_alt usubst_simps(7))
+  apply (subst (1 2) usubst_simps; (simp add: dpair.set_map term.FVars_permute)?)
+  apply blast
+  apply (meson not_imageI)
+    apply (metis Int_commute id_on_image supp_id_on)
+  apply (meson Int_Un_emptyI1 image_Int_empty)
+  apply (subst (1 2) usubst_simps; (simp add: dpair.set_map term.FVars_permute)?)
+  apply (metis Int_Un_emptyI1 disjoint_iff_not_equal fresh_usubst)
+  apply (meson not_imageI)
+    apply (metis Int_commute id_on_image supp_id_on)
+   apply (smt (verit, best) Int_Un_emptyI1 disjoint_iff_not_equal fresh_usubst id_on_def imageE image_Int_empty supp_id_on term.FVars_permute)
+  apply (rule exI[of _ "id"])
+  apply (auto simp: supp_id_bound id_on_def dpair.map_comp dpair.map_id term.permute_id
+    intro!: dpair.map_cong[THEN trans[OF _ dpair.map_id]])
+  apply (meson disjoint_iff_not_equal not_in_supp_alt)
+  apply (metis disjoint_iff_not_equal not_in_supp_alt)
+  done
+
+lemma Let_fresh_inject:
+  assumes "|A| <o |UNIV :: 'a set|"
+  shows "(term.Let xy M N = term.Let xy' M' N') =
+   (\<exists>f. bij f \<and> |supp f :: 'a :: var set| <o |UNIV :: 'a set| \<and> id_on (FVars N \<union> A - dset xy) f \<and> dmap f xy = xy' \<and> M = M' \<and> permute_term f N = N')"
+  sorry
+
+lemma dfst_dmap[simp]: "bij f \<Longrightarrow> dfst (dmap f xy) = f (dfst xy)"
+  by transfer auto
+lemma dsnd_dmap[simp]: "bij f \<Longrightarrow> dsnd (dmap f xy) = f (dsnd xy)"
+  by transfer auto
+lemma dset_alt: "dset xy = {dfst xy, dsnd xy}"
+  by transfer auto
+
+lemma beta_deterministic: "M \<rightarrow> N \<Longrightarrow> M \<rightarrow> N' \<Longrightarrow> N = N'"
+  apply(binder_induction M N arbitrary: N' avoiding: M N N' rule: beta.strong_induct)
+  subgoal premises prems for M N f x Q N' using prems(6)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-5) elim:beta.cases)
+    using prems(4) vals_are_normal[of M]
+    using normal_def apply blast
+    done
+  subgoal premises prems for M N M' N' using prems(3)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-2) elim:beta.cases)
+    using beta.cases prems(1) apply force
+    using normal_def prems(1) val.intros(4) vals_are_normal apply blast
+    using normal_def prems(1) val.intros(4) vals_are_normal apply blast
+    done
+  subgoal for M M' N'
+    by(erule beta.cases) (auto elim:beta.cases)
+  subgoal  premises prems for M M' N' using prems(3)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-2) elim:beta.cases)
+    using normal_def num.intros(1) nums_are_normal prems(1) apply blast
+    using normal_def num.intros(2) nums_are_normal prems(1) apply blast
+    done
+  subgoal premises prems for M N M' N' using prems(3)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-2) elim:beta.cases)
+    using normal_def prems(1) vals_are_normal apply blast
+    using normal_def prems(1) vals_are_normal apply blast
+    done
+  subgoal premises prems for M N M' N' using prems(4)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-3) elim:beta.cases)
+    using normal_def prems(1) vals_are_normal apply blast
+    using normal_def prems(1) vals_are_normal apply blast
+    done
+  subgoal premises prems for M N xy M' N' using prems(6)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-5) elim:beta.cases)
+    using normal_def prems(4) val.intros(3) vals_are_normal apply blast
+    done
+  subgoal premises prems for M M' N P N' using prems(3)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-2) elim:beta.cases)
+    using normal_def num.intros(1) nums_are_normal prems(1) apply blast
+    using normal_def num.intros(2) nums_are_normal prems(1) apply blast
+    done
+  subgoal for N P N'
+    by(erule beta.cases) (auto elim:beta.cases)
+  subgoal for n N P N'
+    apply (erule beta.cases)
+    apply (auto elim:beta.cases)
+    using normal_def num.intros(2) nums_are_normal apply blast
+    done
+  subgoal premises prems for V W xy M N' using prems(6)
+    apply - 
+    apply(erule beta.cases)
+                 apply(auto simp add: prems(1-5) dset_alt simp del: term.inject elim:beta.cases)
+    apply (auto) []
+    using normal_def prems(4,5) val.intros(3) vals_are_normal apply blast
+    apply (subst (asm) Let_fresh_inject[of "FVars V \<union> FVars W"])
+    apply auto
+    apply (rule premute_term_usubst2[symmetric]; simp?)
+    apply (auto simp add: Un_Diff dset_alt id_on_def prems(1))
+     apply (metis Int_Un_empty dset_alt insert_disjoint(2) prems(1) term.set(8,9))
+    apply (metis Int_Un_empty Int_emptyD bij_not_eq_twice dsel_dset(1,2) prems(1) term.set(8,9))
+    done
+  subgoal for N'
+    apply (erule beta.cases)
+    apply (auto elim:beta.cases)
+    done
+  subgoal for n N'
+    apply (erule beta.cases)
+                 apply (auto elim:beta.cases)
+    using normal_def num.intros(2) nums_are_normal apply blast
+    done
+  subgoal premises prems for V f x M N' using prems(5)
+    apply -
+    apply (erule beta.cases)
+                 apply(auto simp add: prems(1-4) dset_alt simp del: term.inject elim:beta.cases)
+    apply (metis normal_def prems(4) term.inject(5) vals_are_normal)
+    apply (metis normal_def term.inject(5) val.intros(4) vals_are_normal)
+    apply auto
+    sorry
+  done
 
 lemma betas_pets:
   "M \<rightarrow>[m] N \<Longrightarrow> N \<rightarrow> P \<Longrightarrow> M \<rightarrow>[Suc m] P"
@@ -241,12 +448,6 @@ next
 qed (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
 *)
 
-binder_inductive (no_auto_equiv) val
-  sorry (*TODO: Dmitriy*)
-
-binder_inductive (no_auto_equiv) beta
-  sorry (*TODO: Dmitriy*)
-
 section \<open>Subst Lemmas\<close>
 
 lemma num_usubst[simp]: "num M \<Longrightarrow> M[V <- x] = M"
@@ -255,38 +456,6 @@ lemma num_usubst[simp]: "num M \<Longrightarrow> M[V <- x] = M"
 lemma val_usubst[simp]: "val M \<Longrightarrow> val V \<Longrightarrow> val (M[V <- x])"
   by (binder_induction M avoiding: V x rule: val.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
     (auto intro: val.intros)
-
-lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV :: 'a set| \<Longrightarrow>
-(\<And>\<rho>. P Zero \<rho>) \<Longrightarrow>
-(\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Succ x) \<rho>) \<Longrightarrow>
-(\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Pred x) \<rho>) \<Longrightarrow>
-(\<And>x1 x2 x3 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.If x1 x2 x3) \<rho>) \<Longrightarrow>
-(\<And>x \<rho>. P (Var x) \<rho>) \<Longrightarrow>
-(\<And>x1 x2 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> P (App x1 x2) \<rho>) \<Longrightarrow>
-(\<And>x1 x2 x3 \<rho>. {x1, x2} \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (Fix x1 x2 x3) \<rho>) \<Longrightarrow>
-(\<And>x1 x2 \<rho>. \<forall>\<rho>. P x1 \<rho> \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> P (term.Pair x1 x2) \<rho>) \<Longrightarrow>
-(\<And>x1 x2 x3 \<rho>. dset x1 \<inter> K \<rho> = {} \<Longrightarrow> \<forall>\<rho>. P x2 \<rho> \<Longrightarrow> \<forall>\<rho>. P x3 \<rho> \<Longrightarrow> P (term.Let x1 x2 x3) \<rho>) \<Longrightarrow> \<forall>\<rho>. P t \<rho>"
-  by (rule term.strong_induct) auto
-
-lemma fresh_subst[simp]: "x \<notin> FVars t \<Longrightarrow> x \<notin> FVars s \<Longrightarrow> x \<notin> FVars (t[s <- y])"
-  by (binder_induction t avoiding: t s y rule: term_strong_induct)
-    (auto simp: Int_Un_distrib)
-
-lemma subst_idle[simp]: "y \<notin> FVars t \<Longrightarrow> t[s <- y] = t"
-  by (binder_induction t avoiding: t s y rule: term_strong_induct) (auto simp: Int_Un_distrib)
-
-lemma FVars_usubst: "FVars M[N <- z] = FVars M - {z} \<union> (if z \<in> FVars M then FVars N else {})"
-  unfolding usubst_def
-  by (auto simp: term.Vrs_Sb split: if_splits)
-
-lemma usubst_usubst: "y1 \<noteq> y2 \<Longrightarrow> y1 \<notin> FVars s2 \<Longrightarrow> t[s1 <- y1][s2 <- y2] = t[s2 <- y2][s1[s2 <- y2] <- y1]"
-  apply (binder_induction t avoiding: t y1 y2 s1 s2 rule: term_strong_induct)
-          apply (auto simp: Int_Un_distrib FVars_usubst split: if_splits)
-  apply (subst (1 2) usubst_simps; auto simp: FVars_usubst split: if_splits)
-  done
-
-lemma dsel_dset[simp]: "dfst xy \<in> dset xy" "dsnd xy \<in> dset xy"
-  by (transfer; auto)+
 
 lemma beta_usubst: "M \<rightarrow> N \<Longrightarrow> val V \<Longrightarrow> M[V <- x] \<rightarrow> N[V <- x]"
   apply (binder_induction M N avoiding: M N V x rule: beta.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
@@ -306,7 +475,7 @@ lemma FVars_beta: "M \<rightarrow> N \<Longrightarrow> FVars N \<subseteq> FVars
   subgoal premises prems for V f x M z
   proof -
     have "FVars M[V <- x][Fix f x M <- f] \<subseteq> FVars M \<union> FVars V"
-      using FVars_usubst fresh_subst by fastforce
+      using FVars_usubst fresh_usubst by fastforce
     then have "z \<in> FVars M" using prems(2, 3) by auto
     then show ?thesis by auto
   qed
@@ -425,31 +594,7 @@ inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 binder_inductive (no_auto_equiv) eval_ctx
   sorry
 
-section \<open>B2\<close>
-
-definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
-  "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]))"
-
-lemma blocked_fresh_hole:
-  assumes "finite A" 
-  shows "blocked z M = (\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> A)"
-proof (rule iffI)
-  obtain hole where "hole \<notin> insert z (A \<union> FVars M)"
-    by (metis arb_element assms finite_FVars finite_Un finite_insert)
-  assume "blocked z M"
-  then obtain hole0 E0 where "eval_ctx hole0 E0" "M = E0[Var z <- hole0]" unfolding blocked_def by blast
-  then show "\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> A"
-    apply (binder_induction hole0 E0 avoiding:  rule: eval_ctx.strong_induct)
-  sorry
-
-lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> eval_ctx y E[Var y <- x]"
-(*
-  apply(binder_induction x E avoiding: y rule: eval_ctx.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1])
-  apply(auto simp add:eval_ctx.intros)
-*)  sorry
-thm eval_ctx.strong_induct[no_vars]
-
-lemma "eval_ctx (x1 :: 'a) x2 \<Longrightarrow>
+lemma eval_ctx_strong_induct[consumes 1]: "eval_ctx (x1 :: 'a) x2 \<Longrightarrow>
 (\<And>p. |K p :: 'a set| <o |UNIV :: 'a :: var set| ) \<Longrightarrow>
 (\<And>hole p. P hole (Var hole) p) \<Longrightarrow>
 (\<And>hole E M f x p. {f, x} \<inter> K p = {} \<Longrightarrow> eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars M \<Longrightarrow> P hole (App (Fix f x M) E) p) \<Longrightarrow>
@@ -460,12 +605,43 @@ lemma "eval_ctx (x1 :: 'a) x2 \<Longrightarrow>
 (\<And>V hole E p. val V \<Longrightarrow> eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars V \<Longrightarrow> P hole (term.Pair V E) p) \<Longrightarrow>
 (\<And>hole E N xy p. dset xy \<inter> K p = {} \<Longrightarrow> eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> dset xy \<Longrightarrow> P hole (term.Let xy E N) p) \<Longrightarrow>
 (\<And>hole E N Pa p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> FVars Pa \<Longrightarrow> P hole (term.If E N Pa) p) \<Longrightarrow> \<forall>p. P x1 x2 p"
-  apply (rule eval_ctx.strong_induct[where K=K])
-            apply simp_all
-lemma eval_ctxt_FVars: "eval_ctx x E \<Longrightarrow> x \<in> FVars E"
-  apply (binder_induction x E avoiding: x rule: eval_ctx.strong_induct[unfolded Int_Un_distrib2])
-  thm eval_ctx.strong_induct[unfolded Int_Un_distrib2 Un_empty]
-  find_theorems ""
+  by (rule eval_ctx.strong_induct[where K=K]) simp_all
+
+section \<open>B2\<close>
+
+definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
+  "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]))"
+
+lemma blocked_fresh_hole:
+  assumes "finite A" 
+  shows "blocked z M = (\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> insert z A)"
+proof (rule iffI)
+  obtain hole where "hole \<notin> insert z (A \<union> FVars M)"
+    by (metis arb_element assms finite_FVars finite_Un finite_insert)
+  assume "blocked z M"
+  then obtain hole0 E0 where "eval_ctx hole0 E0" "M = E0[Var z <- hole0]" unfolding blocked_def by blast
+  then show "\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> insert z A"
+(*
+    apply (binder_induction hole0 E0 avoiding: M rule: eval_ctx_strong_induct)
+*)
+    sorry
+next
+  assume "\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> insert z A"
+  then show "blocked z M"
+    by (auto 0 3 simp: blocked_def usubst_def term.Sb_Inj dest!: spec[of _ "Var z"])
+qed
+
+lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> eval_ctx y E[Var y <- x]"
+  apply(binder_induction x E avoiding: y E rule: eval_ctx_strong_induct)
+          apply(auto intro: eval_ctx.intros)
+  apply (subst usubst_simps)
+     apply (auto intro: eval_ctx.intros)
+  done
+
+thm eval_ctx.strong_induct[no_vars]
+
+lemma eval_ctxt_FVars:
+  "eval_ctx x E \<Longrightarrow> x \<in> FVars E"
   by (induct x E rule: eval_ctx.induct) auto
 
 lemma SSupp_term_Var[simp]: "SSupp Var Var = {}"
@@ -522,9 +698,6 @@ lemma subst_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrigh
     by (auto simp add: usubst_def subst_comp intro!: subst_cong SSupp_term_subst_bound)
   subgoal by (subst usubst_usubst) (auto dest: eval_ctxt_FVars)
   done
-
-lemma dset_alt: "dset xy = {dfst xy, dsnd xy}"
-  by transfer auto
 
 lemma blocked_inductive: 
   "blocked z (Var z)"
@@ -684,7 +857,7 @@ lemma subst_App_inversion:
   obtains R' Q' where "M = App R' Q'" and "R'[t <- x] = R" and "Q'[t <- x] = Q"
   using assms
   apply(atomize_elim)
-  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term.strong_induct)
+  apply(binder_induction M avoiding: "App M (App t (Var x))" rule:term_strong_induct)
   apply(auto simp add:eval_ctx.intros Int_Un_distrib split:if_splits)
   using eval_ctx.intros(1) apply fastforce
   sorry
@@ -1307,7 +1480,8 @@ thm eval_ctx.intros
 
 lemma val_subst: "val V \<Longrightarrow> V \<noteq> Var x \<Longrightarrow> val V[Q <- x]"
   apply(binder_induction V avoiding: "App Q (Var x)" rule: val.strong_induct)
-  apply(auto intro:val.intros)
+     apply(auto intro:val.intros)
+  oops
 
 lemma eval_ctx_subst: "eval_ctx x E \<Longrightarrow> x \<noteq> y \<Longrightarrow> x \<notin> FVars Q \<Longrightarrow> eval_ctx x E[Q <- y]"
   apply(induction rule:eval_ctx.induct)
@@ -1320,9 +1494,11 @@ lemma count_idle[simp]: "x \<notin> FVars M \<Longrightarrow> count_term x M = 0
   done
 
 lemma count_eval_ctx: "eval_ctx hole E \<Longrightarrow> count_term hole E = 1"
-  apply(binder_induction hole E avoiding: "Var hole" rule:eval_ctx.strong_induct)
-  apply(auto)
-  sorry (*will work when binder induction works*)
+  apply(binder_induction hole E avoiding: "Var hole" E rule:eval_ctx.strong_induct)
+          apply(auto)
+  apply (subst count_term_simps)
+    apply auto
+  done
 
 lemma count_subst: "x \<noteq> y \<Longrightarrow> count_term y M[Q <- x] = (count_term x M)*(count_term y Q) + count_term y M"
   apply(binder_induction M avoiding: "App (App M Q) (App (Var x) (Var y))" rule:term.strong_induct)
