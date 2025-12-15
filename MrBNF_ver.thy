@@ -392,6 +392,10 @@ lemma betas_path_sum:
    apply(auto intro:betas.intros)
   done
 
+corollary beta_star_sums:
+  "M \<rightarrow>* N \<Longrightarrow> N \<rightarrow>* P \<Longrightarrow> M \<rightarrow>* P"
+  using betas_path_sum beta_star_def by metis
+
 lemma betas_deterministic: 
   "M \<rightarrow>[n] N \<Longrightarrow> M \<rightarrow>[n] N' \<Longrightarrow> N = N'"
 proof(induction n arbitrary: M)
@@ -614,7 +618,7 @@ definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" w
 
 lemma blocked_fresh_hole:
   assumes "finite A" 
-  shows "blocked z M = (\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> insert z A)"
+  shows "blocked z M = (\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> (hole \<notin> insert z A))"
 proof (rule iffI)
   obtain hole where "hole \<notin> insert z (A \<union> FVars M)"
     by (metis arb_element assms finite_FVars finite_Un finite_insert)
@@ -1556,6 +1560,16 @@ proof (rule ccontr)
   qed(auto)
 qed
 
+lemma subst_val: "val V \<Longrightarrow> \<not> blocked z V \<Longrightarrow> val V[Q <- z]"
+  apply(binder_induction V avoiding: Q rule:val.induct)
+  apply(auto intro:val.intros blocked_inductive)
+  sorry
+
+lemma subst_same: "M[Var x <- x] = M"
+  apply(binder_induction M avoiding: x M rule:term_strong_induct)
+          apply(auto simp add: Int_Un_distrib)
+  done
+
 lemma beta_subst_unblocked:
   "M \<rightarrow> N \<Longrightarrow> \<not> blocked z M \<Longrightarrow> M[Q <- z] \<rightarrow> N[Q <- z]"
 proof(binder_induction M N avoiding: "App M (App (Var z) Q)" rule:beta.strong_induct)
@@ -1567,8 +1581,9 @@ next
   case (OrdPair2 V Na N')
   then have "\<not> blocked z Na" using 
       blocked_inductive by fast
-  then show ?case using OrdPair2 beta.intros(6)
-    sorry
+  have "\<not> blocked z V" using \<open>\<not> blocked z (Pair V Na)\<close> blocked_inductive by metis
+  then have "val V[Q <- z]" using \<open>val V\<close> subst_val by auto
+  then show ?case using OrdPair2 beta.intros(6) \<open>\<not> blocked z Na\<close> by auto
 next
   case (OrdLet Ma M' xy Na)
   then show ?case sorry
@@ -1605,15 +1620,20 @@ proof (induct k x M rule: my_induct)
     then show ?thesis
     proof (cases "blocked x M")
       case True
-      then obtain hole E where "eval_ctx hole E" and "M = E[Var x <- hole]" 
-        and "hole \<noteq> x" and "hole \<notin> FVars Q \<union> FVars N"
-        using blocked_fresh_hole[of "FVars Q \<union> FVars N \<union> {x}" x M]
+      then obtain hole E where strong_eval: "\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- x]" and "M = E[Var x <- hole]" 
+        and fresh1: "hole \<noteq> x" and fresh2: "hole \<notin> FVars Q \<union> FVars N"
+        using blocked_fresh_hole[of "FVars Q \<union> FVars N" x M]
+        using finite_FVars
         by auto
       then have "M[N <- x] = E[N <- x][N <- hole]" and "M[Q <- x] = E[Q <- x][Q <- hole]"
         using usubst_usubst[of hole x N E "Var x"] usubst_usubst[of hole x Q E "Var x"]
         by auto
+      have eval: "eval_ctx hole E" 
+        using strong_eval subst_same[of E x] \<open>hole \<noteq> x\<close>
+        using spec[of "\<lambda>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- x]" "Var x"]
+        by simp
       have "eval_ctx hole E[Q <- x]" and "eval_ctx hole E[N <- x]"
-        using eval_ctx_subst \<open>eval_ctx hole E\<close> \<open>hole \<noteq> x\<close> sorry
+        using strong_eval fresh2 by auto
       show ?thesis
       proof (cases "diverge Q")
         case True
@@ -1736,6 +1756,24 @@ proof -
     sorry
 qed
 
+lemma Pair_betas:
+  assumes m: "M \<rightarrow>[m] M'" and n: "N \<rightarrow>[n] N'" and v:"val M'"
+  shows "Pair M N \<rightarrow>[m+n] Pair M' N'"
+proof -
+  have "Pair M N \<rightarrow>[m] Pair M' N" using m
+    apply(induction rule:betas.induct)
+     apply(auto intro: betas.intros beta.intros)
+    done
+  moreover have "Pair M' N \<rightarrow>[n] Pair M' N'" using n v
+    apply(induction rule:betas.induct)
+     apply(auto intro: betas.intros beta.intros)
+    done
+  ultimately show ?thesis using betas_path_sum by blast
+qed
+
+corollary Pair_beta_star: "M \<rightarrow>* M' \<Longrightarrow> N \<rightarrow>* N' \<Longrightarrow> val M' \<Longrightarrow> Pair M N \<rightarrow>* Pair M' N'"
+  using Pair_betas beta_star_def by metis
+
 lemma less_defined_subst: "P \<lesssim> N \<Longrightarrow> normalizes M[N <- z] \<Longrightarrow> normalizes M[P <- z]"
   sorry
 
@@ -1748,29 +1786,14 @@ lemma b5_prop_num: "num V \<Longrightarrow> b5_prop V V P N Q z"
     apply(auto simp add:b5_prop_def)
   done
 
-lemma b5_prop_reflexive: "val V \<Longrightarrow> \<not> haveFix V \<Longrightarrow> b5_prop V V P N Q z"
-  apply(cases rule:val.cases)
-      apply(auto intro:haveFix.intros(1) simp add:b5_prop_def)
-    apply(cases rule:num.cases)
-      apply(auto)
-  subgoal
-  proof -
-    assume "\<not> haveFix V"
-    have "\<nexists>f x. V = Fix f x P"
-    proof (rule ccontr)
-      assume "\<not> (\<nexists>f x. V = Fix f x P)"
-      then obtain f x where "V = Fix f x P" by auto
-      then show False using \<open>\<not> haveFix V\<close> haveFix.intros(1) by auto
-    qed
-    then show ?thesis by auto
-  qed
-  subgoal for V1 V2
-  proof -
-    have "V1 = V1[P <- z] \<and> V2 = V2[P <- z] \<and> V1[N <- z] = V1 \<and> V2[N <- z] = V2"
-      sorry
-    show ?thesis sorry
-  qed
-  done
+lemma b5_prop_Pair: "z \<notin> FVars (Pair V1 V2) \<Longrightarrow> val V1 \<Longrightarrow> val V2 \<Longrightarrow> b5_prop (Pair V1 V2) (Pair V1 V2) P N Q z"
+proof -
+  assume "z \<notin> FVars (Pair V1 V2)"
+  then have "z \<notin> FVars V1" and "z \<notin> FVars V2" by auto
+  then have "V1 = V1[P <- z] \<and> V2 = V2[P <- z] \<and> V1[N <- z] = V1 \<and> V2[N <- z] = V2" by auto
+  then show ?thesis
+    by (metis b5_prop_def term.distinct(63))
+qed
 
 lemma num_not_haveFix: "num n \<Longrightarrow> \<not> haveFix n"
   apply(induction rule:num.induct)
@@ -1809,8 +1832,8 @@ proof -
 qed
 
 lemma b5_induction: 
-  assumes "val V" and "z \<notin> FVars N" and "M[N <- z] \<rightarrow>* V" and "P \<lesssim> N" and "\<not> diverge M[P <- z]"
-  shows "\<exists>W. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W P N Q z"
+  assumes "val V" and "z \<notin> FVars N" and "M[N <- z] \<rightarrow>* V" and "P \<lesssim> N" and "\<not> diverge M[P <- z]" and "z \<notin> FVars V"
+  shows "\<exists>W Q. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W P N Q z"
   using assms 
 proof (induction V arbitrary: M rule:val.induct)
   case (1 x)
@@ -1828,7 +1851,7 @@ proof (induction V arbitrary: M rule:val.induct)
       using subst_Var_inversion[of U N z x] U1 by simp
     then have "x \<noteq> z" using \<open>U \<noteq> Var z\<close> by simp
     then have "U[P <- z] = Var x" using \<open>U = Var x\<close> subst_idle by auto
-    then have "val (Var x) \<and> M[P <- z] \<rightarrow>* (Var x) \<and> b5_prop (Var x) (Var x) P N Q z" 
+    then have "val (Var x) \<and> M[P <- z] \<rightarrow>* (Var x) \<and> b5_prop (Var x) (Var x) P N Zero z" 
       using \<open>M[P <- z] \<rightarrow>* U[P <- z]\<close> val.intros(1) b5_prop_Var by metis
     then show ?thesis by auto
   qed
@@ -1874,8 +1897,9 @@ next
         using "2.prems"(4) beta_star_diverge div_ctx eval_ctx.intros(1,4)
             usubst_simps(2,5)
         by metis
-      then obtain W where "val W" and "W'[P <- z] \<rightarrow>* W" and "b5_prop n W P N Q z"
-        using 2(2)[of W'] 2(3, 5, 6) \<open>W'[N <- z] \<rightarrow>* n\<close> by auto
+      then obtain W Q where "val W" and "W'[P <- z] \<rightarrow>* W" and "b5_prop n W P N Q z"
+        using 2(2)[of W'] 2(3, 5, 6) \<open>W'[N <- z] \<rightarrow>* n\<close>
+        using "2.prems"(5) term.set(2) by blast
       have "W = n" using \<open>b5_prop n W P N Q z\<close> \<open>num n\<close> num_not_haveFix b5_prop_def by blast
       then have "W'[P <- z] \<rightarrow>* n"                             
         using \<open>W'[P <- z] \<rightarrow>* W\<close> by blast
@@ -1900,22 +1924,44 @@ next
       using b5_helper[of M N z "Pair V1 V2" P U] 3 val.intros(3) U1 U2 by blast
   next
     case False
-    then obtain M1 M2 where "U = Pair M1 M2" and "M1[N <- z] = V1" and "M2[N <- z] = V2"
+    then obtain M1 M2 where m1m2: "U = Pair M1 M2" and m1: "M1[N <- z] = V1" and m2: "M2[N <- z] = V2"
       using subst_Pair_inversion[of U N z V1 V2] False U1
       by metis
     then have "val M1" and "val M2"
       using subst_val_inversion 3(1, 2) (*what if M1 or M2 = Suc z, N = Zero*) sorry
     have "\<not> (M1[P <- z] \<Up>)" and "\<not> (M2[P <- z] \<Up>)"
       sorry
-    then obtain W1 where "val W1" and "M1[P <- z] \<rightarrow>* W1" and "b5_prop V1 W1 P N Q z"
-      using 3(3)[of M1] \<open>M1[N <- z] = V1\<close> beta_star_def betas.refl
-      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> by blast
-    obtain W2 where "val W2" and "M2[P <- z] \<rightarrow>* W2" and "b5_prop V2 W2 P N Q z"
-      using 3(4)[of M2] \<open>M2[N <- z] = V2\<close> beta_star_def betas.refl
-      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M2[P <- z] \<Up>)\<close> by blast
-    have "val (Pair W1 W2) \<and> M[P <- z] \<rightarrow>* (Pair W1 W2) \<and> b5_prop (Pair V1 V2) (Pair W1 W2) P N Q z"
-      sorry
-    then show ?thesis sorry
+    then obtain W1 Q1 where "val W1" and "M1[P <- z] \<rightarrow>* W1" and "b5_prop V1 W1 P N Q1 z"
+      using 3(3)[of M1] m1 beta_star_def betas.refl
+      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
+      by (metis Un_iff term.set(8))
+    moreover obtain W2 Q2 where "val W2" and "M2[P <- z] \<rightarrow>* W2" and "b5_prop V2 W2 P N Q2 z"
+      using 3(4)[of M2] m2 beta_star_def betas.refl
+      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M2[P <- z] \<Up>)\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
+      by (metis Un_iff term.set(8))
+    ultimately have *: "val (Pair W1 W2)" and **: "M[P <- z] \<rightarrow>* (Pair W1 W2)"
+      using val.intros(3) U2 m1m2 beta_star_sums[of "M[P <- z]" "U[P <- z]" "Pair W1 W2"] Pair_beta_star
+       apply auto
+      by blast
+    then show ?thesis
+    proof(cases "haveFix (Pair V1 V2)")
+      case True
+      then have "b5_prop (Pair V1 V2) U[P <- z] P N Q z"
+        using m1m2 m1 m2 b5_prop_def
+        by (metis term.distinct(55) term.inject(7))
+      then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (term.Pair V1 V2) U[P <- z] P N Q z"
+        using U2 sorry
+      then show ?thesis by auto
+    next
+      case False
+      then have "\<not> haveFix V1" and "\<not> haveFix V2"
+        using haveFix_Pair by auto
+      then have "V1 = W1 \<and> V2 = W2" 
+        using \<open>b5_prop V1 W1 P N Q1 z\<close> \<open>b5_prop V2 W2 P N Q2 z\<close> unfolding b5_prop_def by blast
+      then have "val (Pair V1 V2) \<and> M[P <- z] \<rightarrow>* (Pair V1 V2) \<and> b5_prop (Pair V1 V2) (Pair V1 V2) P N Q z"
+        using * ** b5_prop_Pair 3(1, 2, 9) by blast
+      then show ?thesis by auto
+    qed
   qed
 next
   case (4 f x Q)
@@ -1929,22 +1975,39 @@ next
       using b5_helper[of M N z "Fix f x Q" P U] 4 val.intros(4) U1 U2 by blast
   next
     case False
-    moreover have "f \<noteq> z" and "f \<notin> FVars N" and "x \<noteq> z" and "x \<notin> FVars N" sorry
-    ultimately obtain Q' where "U = Fix f x Q'" and "Q'[N <- z] = Q"
+    have "f \<noteq> z" and "f \<notin> FVars N" and "x \<noteq> z" and "x \<notin> FVars N" sorry
+    then obtain Q' where q1: "U = Fix f x Q'" and q2: "Q'[N <- z] = Q"
       using subst_Fix_inversion[of U N z f x Q] \<open>U \<noteq> Var z\<close> U1
       by auto
-    thm 4
-    then show ?thesis sorry
+    then show ?thesis
+    proof (cases "Q = P")
+      case True
+      moreover have "f \<notin> FVars P" and "x \<notin> FVars P" sorry
+      ultimately have "b5_prop (Fix f x Q) U[P <- z] P N Q' z"
+        using \<open>Q = P\<close> b5_prop_def \<open>f \<noteq> z\<close> \<open>x \<noteq> z\<close> q1 q2
+        by (metis (no_types, lifting) haveFix.intros(1) term.distinct(55) usubst_simps(7))
+      then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (Fix f x Q) U[P <- z] P N Q' z"
+        using U2 sorry
+      then show ?thesis by auto
+    next
+      case False
+      then have "b5_prop (Fix f x Q) U[P <- z] P N Q' z" 
+        apply (auto simp add: b5_prop_def intro:haveFix.intros)
+        sorry
+      then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (Fix f x Q) U[P <- z] P N Q' z"
+        using U2 sorry
+      then show ?thesis by auto
+    qed
   qed
 qed
 
 lemma b5:
-  assumes "z \<notin> FVars N" and "M[N <- z] \<rightarrow>* V" and "val V" and "P \<lesssim> N"
-  shows "diverge M[P <- z] \<or> (\<exists>W. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W P N Q z)"
+  assumes "val V" and "z \<notin> FVars N" and "M[N <- z] \<rightarrow>* V" and "P \<lesssim> N" and "z \<notin> FVars V"
+  shows "diverge M[P <- z] \<or> (\<exists>W Q. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W P N Q z)"
   using assms
   apply(cases "diverge M[P <- z]")
-   apply(auto intro: b5_induction)
-  done
+   apply(auto)
+  using b5_induction by blast
 
 lemma b6:
   assumes "stuck M[N <- z]" and "P \<lesssim> N"
