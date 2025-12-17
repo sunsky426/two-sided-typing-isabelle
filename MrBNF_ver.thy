@@ -1774,6 +1774,14 @@ qed
 corollary Pair_beta_star: "M \<rightarrow>* M' \<Longrightarrow> N \<rightarrow>* N' \<Longrightarrow> val M' \<Longrightarrow> Pair M N \<rightarrow>* Pair M' N'"
   using Pair_betas beta_star_def by metis
 
+lemma Pair_div: "diverge M \<Longrightarrow> diverge (Pair M N)"
+proof(coinduction arbitrary: M N rule:diverge.coinduct)
+  case diverge
+  then obtain M' where "Pair M N \<rightarrow> Pair M' N" and "diverge M'" 
+    using diverge.cases beta.intros by metis
+  then show ?case by auto
+qed
+
 lemma less_defined_subst: "P \<lesssim> N \<Longrightarrow> normalizes M[N <- z] \<Longrightarrow> normalizes M[P <- z]"
   sorry
 
@@ -1794,6 +1802,11 @@ proof -
   then show ?thesis
     by (metis b5_prop_def term.distinct(63))
 qed
+
+lemma b5_prop_reflexive: "val V \<Longrightarrow> z \<notin> FVars V \<Longrightarrow> b5_prop V V P N Q z"
+  apply(cases rule:val.cases)
+      apply(auto simp add:b5_prop_def)
+  sorry
 
 lemma num_not_haveFix: "num n \<Longrightarrow> \<not> haveFix n"
   apply(induction rule:num.induct)
@@ -1928,12 +1941,15 @@ next
       using subst_Pair_inversion[of U N z V1 V2] False U1
       by metis
     then have "val M1" and "val M2"
-      using subst_val_inversion 3(1, 2) (*what if M1 or M2 = Suc z, N = Zero*) sorry
-    have "\<not> (M1[P <- z] \<Up>)" and "\<not> (M2[P <- z] \<Up>)"
-      sorry
-    then obtain W1 Q1 where "val W1" and "M1[P <- z] \<rightarrow>* W1" and "b5_prop V1 W1 P N Q1 z"
+      using subst_val_inversion 3(1, 2) (*what if M1 or M2 = Suc z, N = Zero*) sorry (*why do we need you?*)
+    have "\<not> (M1[P <- z] \<Up>)" 
+      using m1m2 U2 beta_star_diverge[of "M[P <- z]" "U[P <- z]"]
+      using "3.prems"(4) Pair_div[of "M1[P <- z]" "M2[P <- z]"] 
+      by auto
+    then have "\<not> (M2[P <- z] \<Up>)" sorry (*what if M2 diverge and M1 stuck*)
+    obtain W1 Q1 where "val W1" and "M1[P <- z] \<rightarrow>* W1" and "b5_prop V1 W1 P N Q1 z"
       using 3(3)[of M1] m1 beta_star_def betas.refl
-      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
+      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M1[P <- z] \<Up>)\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
       by (metis Un_iff term.set(8))
     moreover obtain W2 Q2 where "val W2" and "M2[P <- z] \<rightarrow>* W2" and "b5_prop V2 W2 P N Q2 z"
       using 3(4)[of M2] m2 beta_star_def betas.refl
@@ -1950,7 +1966,7 @@ next
         using m1m2 m1 m2 b5_prop_def
         by (metis term.distinct(55) term.inject(7))
       then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (term.Pair V1 V2) U[P <- z] P N Q z"
-        using U2 sorry
+        using U2 sorry (*val U[P <- z]*)
       then show ?thesis by auto
     next
       case False
@@ -1987,15 +2003,15 @@ next
         using \<open>Q = P\<close> b5_prop_def \<open>f \<noteq> z\<close> \<open>x \<noteq> z\<close> q1 q2
         by (metis (no_types, lifting) haveFix.intros(1) term.distinct(55) usubst_simps(7))
       then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (Fix f x Q) U[P <- z] P N Q' z"
-        using U2 sorry
+        using U2 sorry (*need val U[P <- z]*)
       then show ?thesis by auto
     next
       case False
       then have "b5_prop (Fix f x Q) U[P <- z] P N Q' z" 
         apply (auto simp add: b5_prop_def intro:haveFix.intros)
-        sorry
+        sorry (*Fix f x Q can = Fix f x P even if Q \<noteq> P, but really want to case distinguish by whether we take b5_prop(3)*)
       then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (Fix f x Q) U[P <- z] P N Q' z"
-        using U2 sorry
+        using U2 sorry (*need val U[P <- z]*)
       then show ?thesis by auto
     qed
   qed
@@ -2009,9 +2025,57 @@ lemma b5:
    apply(auto)
   using b5_induction by blast
 
+definition getStuck :: "'var::var term \<Rightarrow> bool" where
+  "getStuck M = (\<exists>M'. M \<rightarrow>* M' \<and> stuck M')"
+
 lemma b6:
-  assumes "stuck M[N <- z]" and "P \<lesssim> N"
-  shows "diverge M[P <- z] \<or> stuck M[P <- z]"
-  sorry
+  assumes gsM: "getStuck M[N <- z]" and ls: "P \<lesssim> N"
+  shows "diverge M[P <- z] \<or> getStuck M[P <- z]"
+proof -
+  obtain M' where "M[N <- z] \<rightarrow>* M'" and "stuck M'" using gsM getStuck_def by auto
+  obtain R where "M' = R[N <- z]" and "diverge M[P <- z] \<or> M[P <- z] \<rightarrow>* R[P <- z]" sorry
+  obtain E hole Q where "eval_ctx hole E" and "R[N <- z] = E[Q <- hole]" and "stuckExp Q" sorry
+  obtain F Q' where "eval_ctx hole F" and "R = F[Q' <- hole]" and "Q'[N <- z] = Q" 
+    using b5 sorry
+  then show ?thesis
+  proof(cases "Q' = Var z")
+    case True
+    then have "Q = N" sorry
+    then obtain N' where "stuckExp N'" and "diverge R[P <- z] \<and> R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]"
+      sorry
+    then show ?thesis sorry
+  next
+    case False
+    show ?thesis
+    proof (induction Q)
+      case 1
+      then show ?case sorry
+    next
+      case (2 Q)
+      then show ?case sorry
+    next
+      case (3 Q)
+      then show ?case sorry
+    next
+      case (4 Q1 Q2 Q3)
+      then show ?case sorry
+    next
+      case (5 x)
+      then show ?case sorry
+    next
+      case (6 Q1 Q2)
+      then show ?case sorry
+    next
+      case (7 x1 x2 Q)
+      then show ?case sorry
+    next
+      case (8 Q1 Q2)
+      then show ?case sorry
+    next
+      case (9 x1 Q1 Q2)
+      then show ?case sorry
+    qed
+  qed
+qed
 
 end
