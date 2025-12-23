@@ -98,24 +98,6 @@ inductive val :: "'var::var term \<Rightarrow> bool" where
 | "val V \<Longrightarrow> val W \<Longrightarrow> val (Pair V W)"
 | "val (Fix f x M)"
 
-inductive stuckExp :: "'var::var term \<Rightarrow> bool" where
-  "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Pred V)"
-| "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (Succ V)"
-| "\<lbrakk> val V ; \<not> num V \<rbrakk> \<Longrightarrow> stuckExp (If V _ _)"
-| "\<lbrakk> val V ; V \<noteq> Fix _ _ _ \<rbrakk> \<Longrightarrow> stuckExp (App V M)"
-| "\<lbrakk> val V ; V \<noteq> Pair _ _ \<rbrakk> \<Longrightarrow> stuckExp (Let x V M)"
-
-inductive stuck :: "'var::var term \<Rightarrow> bool" where
-  "stuckExp M \<Longrightarrow> stuck M"
-| "stuck N \<Longrightarrow> stuck (App (Fix f x M) N)"
-| "stuck M \<Longrightarrow> stuck (App M N)"
-| "stuck M \<Longrightarrow> stuck (Succ M)"
-| "stuck M \<Longrightarrow> stuck (Pred M)"
-| "stuck M \<Longrightarrow> stuck (Pair M N)"
-| "val V \<Longrightarrow> stuck N \<Longrightarrow> stuck (Pair V N)"
-| "stuck M \<Longrightarrow> stuck (Let x M N)"
-| "stuck M \<Longrightarrow> stuck (If M N P)"
-
 section \<open>Beta Reduction\<close>
 
 inductive beta :: "'var::var term \<Rightarrow> 'var::var term \<Rightarrow> bool"  (infix "\<rightarrow>" 70) where
@@ -150,6 +132,12 @@ definition normal :: "'var::var term \<Rightarrow> bool" where
 definition normalizes :: "'var::var term \<Rightarrow> bool" where
   "normalizes M \<equiv> \<exists>N. normal N \<and> M \<rightarrow>* N"
 
+inductive stuckEx :: "'var::var term \<Rightarrow> bool" where
+  "val V \<Longrightarrow> \<not> num V \<Longrightarrow> stuckEx (Succ V)"
+| "val V \<Longrightarrow> \<not> num V \<Longrightarrow> stuckEx (If V N P)"
+| "val V \<Longrightarrow> \<nexists>f x Q. V = Fix f x Q \<Longrightarrow> stuckEx (App V M)"
+| "val V \<Longrightarrow> \<nexists>V1 V2. V = Pair V1 V2 \<Longrightarrow> stuckEx (Let xy V M)"
+
 lemma normals_normalizes: "normal N \<Longrightarrow> normalizes N"
   by(auto simp add: normalizes_def beta_star_def intro: betas.refl[of N])
 
@@ -160,7 +148,7 @@ lemma nums_are_normal: "num V \<Longrightarrow> normal V"
 
 lemma vals_are_normal: "val V \<Longrightarrow> normal V"
   apply(induction rule:val.induct)
-  apply(auto elim:elim:nums_are_normal)
+  apply(auto elim:nums_are_normal)
   apply(auto elim:beta.cases simp add:normal_def)
   done
 
@@ -492,97 +480,12 @@ corollary FVars_betas: "M \<rightarrow>[n] N \<Longrightarrow> FVars N \<subsete
 corollary FVars_beta_star: "M \<rightarrow>* N \<Longrightarrow> FVars N \<subseteq> FVars M"
   using beta_star_def FVars_betas by blast
 
-section \<open>Judgements\<close>
-
-type_synonym 'var typing = "'var term \<times> type"
-notation Product_Type.Pair (infix ":." 70)
-
-inductive disjunction :: "type \<Rightarrow> type \<Rightarrow> bool" (infix "||" 70) where
-  "Nat || Prod _ _"
-| "Nat || To _  _"
-| "Nat || OnlyTo _  _"
-| "Prod _ _ || To _ _"
-| "Prod _ _ || OnlyTo _  _"
-| "A || B \<Longrightarrow> B || A"
-
-notation Set.insert (infixr ";" 50)
-
-inductive judgement :: "'var::var typing set \<Rightarrow> 'var::var typing set \<Rightarrow> bool" (infix "\<turnstile>" 10) where
-  Id : "(Var x :. A) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta>"
-| ZeroR : "\<Gamma> \<turnstile> (Zero :. Nat) ; \<Delta>"
-| SuccR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Succ M :. Nat) ; \<Delta>"
-| PredR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Pred M :. Nat) ; \<Delta>"
-| FixsR: "(Var f :. To A B) ; (Var x :. A) ; \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. To A B) ; \<Delta>"
-| FixnR: "(Var f :. OnlyTo A B) ; (M :. B) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. OnlyTo A B) ; \<Delta>"
-| AppR: "(M :. To B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (App M N :. A) ; \<Delta>"
-| PairR: "\<Gamma> \<turnstile> (M :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (Pair M N :. Prod A B) ; \<Delta>"
-| LetR: "(M :. Prod B C) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Var (dfst x) :. B) ; (Var (dsnd x) :. C) ; \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Let x M N :. A) ; \<Delta>"
-| IfzR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (P :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (If M N P :. A) ; \<Delta>"
-| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> (M :. A); \<Gamma> \<turnstile> \<Delta>"
-| PairL1: "(M :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M N :. Prod A B) ; \<Gamma> \<turnstile> \<Delta>"
-| AppL: "(M :. OnlyTo B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. B) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| SuccL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
-| PredL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
-| IfzL1: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| IfzL2: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (P :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| LetL1: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| LetL2_1: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dfst x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| LetL2_2: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dsnd x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| OkVarR: "\<Gamma> \<turnstile> (Var x :. Ok) ; \<Delta>"
-| OkL: "(M :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
-| OkR: "\<Gamma> \<turnstile> (M :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (M :. Ok) ; \<Delta>"
-| OkApL1: "(M :. OnlyTo Ok A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
-| OkApL2: "(N :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
-| OkSL: "(M :. Nat); \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
-| OkPL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
-| OkPrL_1: "(M1 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
-| OkPrL_2: "(M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
-
-binder_inductive (no_auto_equiv) judgement
-  sorry
-
-thm judgement.strong_induct
-
-lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
-  apply (induction \<Gamma> \<Delta> rule:judgement.induct)
-  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
+lemma subst_iden[simp]: "M[Var x <- x] = M"
+  apply(binder_induction M avoiding: x M rule:term_strong_induct)
+          apply(auto simp add: Int_Un_distrib)
   done
 
-lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<turnstile> (M :. A) ; \<Delta>"
-  apply (induction \<Gamma> \<Delta> rule:judgement.induct)
-  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
-  done
-
-section \<open>Semantics\<close>
-
-definition "Vals0 = {V. val V}"
-
-fun
-  type_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<lblot>_\<rblot>" 90) and
-  tau_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<T>\<lblot>_\<rblot>" 90) and 
-  bottom_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<T>\<^sub>\<bottom>\<lblot>_\<rblot>" 90) where
-  "\<lblot>Ok\<rblot> = Vals0"
-| "\<lblot>Nat\<rblot> = {V. num V}"
-| "\<lblot>Prod A B\<rblot> = case_prod Pair ` (\<lblot>A\<rblot> \<times> \<lblot>B\<rblot>)"
-| "\<lblot>To A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. V \<in> \<lblot>A\<rblot> \<longrightarrow> M[V <- x][Fix f x M <- f] \<in> \<T>\<^sub>\<bottom>\<lblot>B\<rblot>}"
-| "\<lblot>OnlyTo A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. M[V <- x][Fix f x M <- f] \<in> \<T>\<lblot>B\<rblot> \<longrightarrow> V \<in> \<lblot>A\<rblot>}"
-| "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
-| "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
-
-type_synonym 'var valuation = "('var \<times> 'var term) list"
-
-fun eval :: "'var::var valuation \<Rightarrow> 'var term \<Rightarrow> 'var term" where
-  "eval Nil M = M"
-| "eval ((x,t) # ps) M = eval ps (M[t <- x])"
-
-inductive typing_semanticsL :: "'var::var valuation \<Rightarrow> 'var typing \<Rightarrow> bool" where
-  "eval \<theta> M \<in> \<T>\<lblot>A\<rblot> \<Longrightarrow> typing_semanticsL \<theta> (M :. A)"
-
-inductive typing_semanticsR :: "'var::var valuation \<Rightarrow> 'var typing \<Rightarrow> bool" where
-  "eval \<theta> M \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot> \<Longrightarrow> typing_semanticsR \<theta> (M :. A)"
-
-inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing set \<Rightarrow> bool" (infix "\<Turnstile>" 10) where
-  "\<forall>\<theta>. (\<forall>\<tau>\<in>L. typing_semanticsL \<theta> \<tau>) \<longrightarrow> (\<forall>\<tau>\<in>R. typing_semanticsR \<theta> \<tau>) \<Longrightarrow> L \<Turnstile> R"
+section \<open>Contexts\<close>
 
 inductive eval_ctx :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where
   "eval_ctx hole (Var hole)"
@@ -611,8 +514,6 @@ lemma eval_ctx_strong_induct[consumes 1]: "eval_ctx (x1 :: 'a) x2 \<Longrightarr
 (\<And>hole E N Pa p. eval_ctx hole E \<Longrightarrow> \<forall>p. P hole E p \<Longrightarrow> hole \<notin> FVars N \<Longrightarrow> hole \<notin> FVars Pa \<Longrightarrow> P hole (term.If E N Pa) p) \<Longrightarrow> \<forall>p. P x1 x2 p"
   by (rule eval_ctx.strong_induct[where K=K]) simp_all
 
-section \<open>B2\<close>
-
 definition blocked :: "'var :: var \<Rightarrow> 'var term \<Rightarrow> bool" where 
   "blocked z M = (\<exists> hole E. eval_ctx hole E \<and> (M = E[Var z <- hole]))"
 
@@ -633,6 +534,18 @@ next
   assume "\<exists> hole E. (\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]) \<and> (M = E[Var z <- hole]) \<and> hole \<notin> insert z A"
   then show "blocked z M"
     by (auto 0 3 simp: blocked_def usubst_def term.Sb_Inj dest!: spec[of _ "Var z"])
+qed
+
+lemma eval_ctx_fresh: 
+  assumes fnt: "finite A" and ctx: "eval_ctx hole E"
+  shows "\<exists>hole' E'. (\<forall>N. hole' \<notin> FVars N \<longrightarrow> eval_ctx hole' E'[N <- z]) \<and> (hole' \<notin> A)"
+proof -
+  have "E = E[Var hole <- hole]" using subst_iden by simp
+  then have "blocked hole E" unfolding blocked_def
+    using ctx by blast
+  then obtain hole' E' where "\<forall>N. hole' \<notin> FVars N \<longrightarrow> eval_ctx hole' E'[N <- hole]" and "hole' \<notin> A"
+    using fnt blocked_fresh_hole sorry
+  then show ?thesis by auto
 qed
 
 lemma eval_subst: "eval_ctx x E \<Longrightarrow> y \<notin> FVars E \<Longrightarrow> eval_ctx y E[Var y <- x]"
@@ -822,6 +735,114 @@ qed
     done
   done
 
+definition stuck :: "'var::var term \<Rightarrow> bool" where
+  "stuck M = (\<exists>E hole N. eval_ctx hole E \<and> E[N <- hole] = M \<and> stuckEx N)"
+
+definition getStuck :: "'var::var term \<Rightarrow> bool" where
+  "getStuck M = (\<exists>N. stuck N \<and> M \<rightarrow>* N)"
+
+lemma stuckEx_are_normal: "stuckEx M \<Longrightarrow> normal M" unfolding normal_def
+  apply(induction M rule:stuckEx.induct)
+     apply(auto)
+  sorry
+
+lemma stucks_are_normal: "stuck M \<Longrightarrow> normal M"
+  sorry
+
+section \<open>Judgements\<close>
+
+type_synonym 'var typing = "'var term \<times> type"
+notation Product_Type.Pair (infix ":." 70)
+
+inductive disjunction :: "type \<Rightarrow> type \<Rightarrow> bool" (infix "||" 70) where
+  "Nat || Prod _ _"
+| "Nat || To _  _"
+| "Nat || OnlyTo _  _"
+| "Prod _ _ || To _ _"
+| "Prod _ _ || OnlyTo _  _"
+| "A || B \<Longrightarrow> B || A"
+
+notation Set.insert (infixr ";" 50)
+
+inductive judgement :: "'var::var typing set \<Rightarrow> 'var::var typing set \<Rightarrow> bool" (infix "\<turnstile>" 10) where
+  Id : "(Var x :. A) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta>"
+| ZeroR : "\<Gamma> \<turnstile> (Zero :. Nat) ; \<Delta>"
+| SuccR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Succ M :. Nat) ; \<Delta>"
+| PredR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Pred M :. Nat) ; \<Delta>"
+| FixsR: "(Var f :. To A B) ; (Var x :. A) ; \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. To A B) ; \<Delta>"
+| FixnR: "(Var f :. OnlyTo A B) ; (M :. B) ; \<Gamma> \<turnstile> (Var x :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Fix f x M :. OnlyTo A B) ; \<Delta>"
+| AppR: "(M :. To B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (App M N :. A) ; \<Delta>"
+| PairR: "\<Gamma> \<turnstile> (M :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. B) ; \<Delta> \<Longrightarrow>  \<Gamma>  \<turnstile> (Pair M N :. Prod A B) ; \<Delta>"
+| LetR: "(M :. Prod B C) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Var (dfst x) :. B) ; (Var (dsnd x) :. C) ; \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (Let x M N :. A) ; \<Delta>"
+| IfzR: "\<Gamma> \<turnstile> (M :. Nat) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (P :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (N :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (If M N P :. A) ; \<Delta>"
+| Dis: "A || B \<Longrightarrow> \<Gamma> \<turnstile> (M :. B) ; \<Delta> \<Longrightarrow> (M :. A); \<Gamma> \<turnstile> \<Delta>"
+| PairL1: "(M :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M N :. Prod A B) ; \<Gamma> \<turnstile> \<Delta>"
+| AppL: "(M :. OnlyTo B A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. B) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| SuccL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
+| PredL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Nat) ; \<Gamma> \<turnstile> \<Delta>"
+| IfzL1: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| IfzL2: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (P :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (If M N P :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| LetL1: "(N :. A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| LetL2_1: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dfst x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| LetL2_2: "(M :. Prod B1 B2) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (N :. A) ; \<Gamma> \<turnstile> (Var (dsnd x) :. B1) ; \<Delta> \<Longrightarrow> (Let x M N :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| OkVarR: "\<Gamma> \<turnstile> (Var x :. Ok) ; \<Delta>"
+| OkL: "(M :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
+| OkR: "\<Gamma> \<turnstile> (M :. A) ; \<Delta> \<Longrightarrow> \<Gamma> \<turnstile> (M :. Ok) ; \<Delta>"
+| OkApL1: "(M :. OnlyTo Ok A) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
+| OkApL2: "(N :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (App M N :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
+| OkSL: "(M :. Nat); \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Succ M :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
+| OkPL: "(M :. Nat) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pred M :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
+| OkPrL_1: "(M1 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
+| OkPrL_2: "(M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (Pair M1 M2 :. Ok) ; \<Gamma> \<turnstile> \<Delta>"
+
+binder_inductive (no_auto_equiv) judgement
+  sorry
+
+thm judgement.strong_induct
+
+lemma weakenL: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> (M :. A) ; \<Gamma> \<turnstile> \<Delta>"
+  apply (induction \<Gamma> \<Delta> rule:judgement.induct)
+  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
+  done
+
+lemma weakenR: "\<Gamma> \<turnstile> \<Delta> \<Longrightarrow> \<Gamma>  \<turnstile> (M :. A) ; \<Delta>"
+  apply (induction \<Gamma> \<Delta> rule:judgement.induct)
+  apply (auto intro: judgement.intros simp add: insert_commute[of "M :. A" _])
+  done
+
+section \<open>Semantics\<close>
+
+definition "Vals0 = {V. val V}"
+
+fun
+  type_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<lblot>_\<rblot>" 90) and
+  tau_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<T>\<lblot>_\<rblot>" 90) and 
+  bottom_semantics :: "type \<Rightarrow> 'var :: var term set" ("\<T>\<^sub>\<bottom>\<lblot>_\<rblot>" 90) where
+  "\<lblot>Ok\<rblot> = Vals0"
+| "\<lblot>Nat\<rblot> = {V. num V}"
+| "\<lblot>Prod A B\<rblot> = case_prod Pair ` (\<lblot>A\<rblot> \<times> \<lblot>B\<rblot>)"
+| "\<lblot>To A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. V \<in> \<lblot>A\<rblot> \<longrightarrow> M[V <- x][Fix f x M <- f] \<in> \<T>\<^sub>\<bottom>\<lblot>B\<rblot>}"
+| "\<lblot>OnlyTo A B\<rblot> = {Fix f x M | f x M. \<forall>V \<in> Vals0. M[V <- x][Fix f x M <- f] \<in> \<T>\<lblot>B\<rblot> \<longrightarrow> V \<in> \<lblot>A\<rblot>}"
+| "\<T>\<lblot>A\<rblot> = {M. \<exists>V \<in> \<lblot>A\<rblot>. M \<rightarrow>* V \<and> val V}"
+| "\<T>\<^sub>\<bottom>\<lblot>A\<rblot> = {M. M \<in> \<T>\<lblot>A\<rblot> \<or> (M \<Up>)}"
+
+type_synonym 'var valuation = "('var \<times> 'var term) list"
+
+fun eval :: "'var::var valuation \<Rightarrow> 'var term \<Rightarrow> 'var term" where
+  "eval Nil M = M"
+| "eval ((x,t) # ps) M = eval ps (M[t <- x])"
+
+inductive typing_semanticsL :: "'var::var valuation \<Rightarrow> 'var typing \<Rightarrow> bool" where
+  "eval \<theta> M \<in> \<T>\<lblot>A\<rblot> \<Longrightarrow> typing_semanticsL \<theta> (M :. A)"
+
+inductive typing_semanticsR :: "'var::var valuation \<Rightarrow> 'var typing \<Rightarrow> bool" where
+  "eval \<theta> M \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot> \<Longrightarrow> typing_semanticsR \<theta> (M :. A)"
+
+inductive semantic_judgement :: "'var::var typing set \<Rightarrow> 'var typing set \<Rightarrow> bool" (infix "\<Turnstile>" 10) where
+  "\<forall>\<theta>. (\<forall>\<tau>\<in>L. typing_semanticsL \<theta> \<tau>) \<longrightarrow> (\<forall>\<tau>\<in>R. typing_semanticsR \<theta> \<tau>) \<Longrightarrow> L \<Turnstile> R"
+
+section \<open>B2\<close>
+
 lemma subst_Zero_inversion:
   assumes "M[t <- x] = Zero" and "\<not> M = Var x"
   shows "M = Zero"
@@ -976,12 +997,12 @@ lemma b2:
     and "x \<noteq> z"
     and "x \<notin> FVars M \<union> FVars P \<union> FVars N"
     and "\<not> (blocked z M)"
-  shows "\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
+  shows "\<exists>F P'. eval_ctx x F \<and> M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z]"
 proof (rule eval_ctx.strong_induct[where P = "\<lambda>x E p. \<forall>M.
     p = (z, N, M, E, x, P) \<longrightarrow> M[N <- z] = E[P <- x] \<longrightarrow>
     x \<noteq> z \<longrightarrow>
     x \<notin> FVars M \<union> FVars P \<union> FVars N \<longrightarrow>
-    \<not> blocked z M \<longrightarrow> (\<exists>F P'. M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z])"
+    \<not> blocked z M \<longrightarrow> (\<exists>F P'. eval_ctx x F \<and> M = F[P' <- x] \<and> E = F[N <- z] \<and> P = P'[N <- z])"
     and K = "\<lambda>(z, N, M, E, x, P). {z,x} \<union> FVars N \<union> FVars M  \<union> FVars E \<union> FVars P",
     rule_format, rotated -5, of "(z, N, M, E, x, P)" M E x, OF _ assms(2,3,4,5,1),
     simplified prod.inject simp_thms True_implies_equals prod.case], goal_cases card 1 2 3 4 5 6 7 8 9)
@@ -993,7 +1014,8 @@ next
   case (1 x p M)
   have "M[N <- z] = P" by (simp add: 1(2))
   obtain F P' where "F = Var x" "P' = M" by simp
-  show ?case by (metis 1(3) \<open>M[N <- z] = P\<close> usubst_simps(5))
+  show ?case
+    by (metis "1"(3) \<open>M[N <- z] = P\<close> eval_ctx.intros(1) usubst_simps(5))
 next
   case (2 hole E Q f a p M)
   have "M[N <- z] = App (Fix f a Q) (E[P <- hole])" 
@@ -1005,9 +1027,9 @@ next
      using subst_Fix_inversion[of F N z f a Q] 2 blocked_inductive(1)[of z] by auto
   then have "\<not> blocked z R"
     using \<open>\<not> blocked z M\<close> blocked_inductive(2) by blast
-  then obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
-    using \<open>R[N <- z] = E[P <- hole]\<close> 2(3)[of "(z, N, R, E, hole, P)" R] 2(8)
-    by (metis Un_iff \<open>M = App F R\<close> term.set(6))
+  then obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]" and "eval_ctx hole E'"
+    using \<open>R[N <- z] = E[P <- hole]\<close> 2(3)[of "(z, N, R, E, hole, P)" R] 2(8) \<open>M = App F R\<close>
+    by auto
   moreover have "hole \<notin> FVars Q'"
     using 2 \<open>hole \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = App (Fix f a Q') R\<close>
     by simp
@@ -1015,7 +1037,9 @@ next
     using \<open>M = App (Fix f a Q') R\<close> \<open>Q'[N <- z] = Q\<close> \<open>R[N <- z] = E[P <- hole]\<close>
     by (metis "2"(8) Un_iff \<open>F[N <- z] = Fix f a Q\<close> \<open>M = App F R\<close> subst_idle
         term.inject(5) usubst_simps(6))
-  then show ?case by metis
+  also have "eval_ctx hole (App (Fix f a Q') E')" 
+    using \<open>eval_ctx hole E'\<close> \<open>hole \<notin> FVars Q'\<close> eval_ctx.intros(2)[of hole E' Q'] by simp
+  ultimately show ?case by metis
 next
   case (3 x E Q p M)
   have "M[N <- z] = App (E[P <- x]) Q" using 3 by simp
@@ -1023,14 +1047,15 @@ next
     using subst_App_inversion 3 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z R"
     using \<open>M = App R Q'\<close> eval_ctx.intros(3) blocked_def blocked_inductive(3) by blast
-  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- x]"
+  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- x]" and "eval_ctx x E'"
     using 3(2)[where M = R] 3 by force
   moreover have "x \<notin> FVars Q'"
     using 3 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = App R Q'\<close>
     by simp
   ultimately have "M = (App E' Q')[P' <- x] \<and> App E Q = (App E' Q')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = App R Q'\<close> \<open>Q'[N <- z] = Q\<close> by simp
-  then show ?case by blast
+  also have "eval_ctx x (App E' Q')" using eval_ctx.intros \<open>eval_ctx x E'\<close> \<open>x \<notin> FVars Q'\<close> by blast
+  ultimately show ?case by blast
 next                                                                       
   case (4 x E p M)
   have "M[N <- z] = Succ(E[P <- x])" by (simp add: 4)
@@ -1039,11 +1064,12 @@ next
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using \<open>M = Succ Q\<close> eval_ctx.intros(4) blocked_def by (metis usubst_simps(2))
   ultimately
-  obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]"
+  obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]" and "eval_ctx x F'"
     using 4(2)[where M = Q] 4(1,3-) by auto
   then have "M = (Succ F')[P' <- x] \<and> Succ E = (Succ F')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = Succ Q\<close> by simp
-  then show ?case by blast
+  also have "eval_ctx x (Succ F')" using \<open>eval_ctx x F'\<close> eval_ctx.intros by blast
+  ultimately show ?case by blast
 next
   case (5 x E p M)
   have "M[N <- z] = Pred(E[P <- x])" by (simp add: 5)
@@ -1052,11 +1078,12 @@ next
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
     using \<open>M = Pred Q\<close> eval_ctx.intros(5) blocked_def by (metis usubst_simps(3))
   ultimately
-  obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]"
+  obtain F' P' where "P'[N <- z] = P" and "E = F'[N <- z]" and "Q = F'[P' <- x]" and "eval_ctx x F'"
     using 5(2)[where M = Q] 5(1,3-) by auto
   then have "M = (Pred F')[P' <- x] \<and> Pred E = (Pred F')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = Pred Q\<close> by simp
-  then show ?case by blast
+  also have "eval_ctx x (Pred F')" using \<open>eval_ctx x F'\<close> eval_ctx.intros by blast
+  ultimately show ?case by blast
 next
   case (6 x E Q p M)
   have "M[N <- z] = Pair (E[P <- x]) Q"
@@ -1065,31 +1092,35 @@ next
     using subst_Pair_inversion 6 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q1" 
     using blocked_inductive \<open>M = Pair Q1 Q2\<close> by metis
-  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q1 = E'[P' <- x]"
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q1 = E'[P' <- x]" and "eval_ctx x E'"
     using 6(2)[where M = Q] 6 by fastforce
    moreover have "x \<notin> FVars Q2"
     using 6 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = Pair Q1 Q2\<close>
     by simp
   ultimately have "M = (Pair E' Q2)[P' <- x] \<and> Pair E Q = (Pair E' Q2)[N <- z] \<and> P = P'[N <- z]"
     by (simp add: \<open>M = term.Pair Q1 Q2\<close> \<open>Q = Q2[N <- z]\<close>)
-  then show ?case by blast
+  also have "eval_ctx x (Pair E' Q2)" using \<open>eval_ctx x E'\<close> \<open>x \<notin> FVars Q2\<close> eval_ctx.intros by metis
+  ultimately show ?case by blast
 next
   case (7 V x E p M)
   have "M[N <- z] = Pair V E[P <- x]"
     by(simp add: 7)
   then obtain V' Q where "M = Pair V' Q" and "V = V'[N <- z]" and "E[P <- x] = Q[N <- z]"
     using subst_Pair_inversion 7 blocked_inductive(1) by metis
-  moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q" 
-    using blocked_inductive(7) \<open>M = Pair V' Q\<close> subst_val_inversion
-    using "7"(1) blocked_inductive(6) calculation(2) by blast
-  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q = E'[P' <- x]"
+  moreover have "\<not> blocked z Q" and "val V'"
+    using blocked_inductive(7) \<open>M = Pair V' Q\<close> \<open>\<not> blocked z M\<close> subst_val_inversion
+    using "7"(1) blocked_inductive(6) calculation(2)
+     apply blast
+    using "7"(1,9) blocked_inductive(6) calculation(1,2) subst_val_inversion by blast
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q = E'[P' <- x]" and "eval_ctx x E'"
     using 7(3)[where M = Q] 7 by fastforce
-   moreover have "x \<notin> FVars V'"
+  moreover have "x \<notin> FVars V'"
     using 7 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = Pair V' Q\<close>
     by simp
   ultimately have "M = (Pair V' E')[P' <- x] \<and> Pair V E = (Pair V' E')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = term.Pair V' Q\<close> \<open>V = V'[N <- z]\<close> \<open>Q = E'[P' <- x]\<close> by simp
-  then show ?case by blast
+  also have "eval_ctx x (Pair V' E')" using \<open>eval_ctx x E'\<close> \<open>x \<notin> FVars V'\<close> \<open>val V'\<close> eval_ctx.intros by metis
+  ultimately show ?case by blast
 next
   case (8 hole E Q x p M)
   have "M[N <- z] = Let x E[P <- hole] Q"
@@ -1100,7 +1131,7 @@ next
     by blast
   moreover have "\<not> blocked z R" using "8"(1,9,10) blocked_inductive \<open>M = Let x R Q'\<close>
     by fastforce
-  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]"
+  ultimately obtain E' P' where "P = P'[N <- z]" and "E = E'[N <- z]" and "R = E'[P' <- hole]" and "eval_ctx hole E'"
     using 8(3)[of "(z, N, R, E, hole, P)" R] 8(8,9)
     by (metis Un_iff term.set(9))
   moreover have "hole \<notin> FVars Q'"
@@ -1115,9 +1146,10 @@ next
     using usubst_simps(9)[of z x N E' Q'] \<open>dset x \<inter> FVars E' = {}\<close> 8(1)
     using \<open>E = E'[N <- z]\<close> \<open>Q'[N <- z] = Q\<close>
     by fastforce
-  ultimately have "M = (Let x E' Q')[P' <- hole] \<and> Let x E Q = (Let x E' Q')[N <- z] \<and> P = P'[N <- z]"
+  ultimately have *: "M = (Let x E' Q')[P' <- hole] \<and> Let x E Q = (Let x E' Q')[N <- z] \<and> P = P'[N <- z]"
     using \<open>P = P'[N <- z]\<close> by blast
-  then show ?case by auto
+  also have "eval_ctx hole (Let x E' Q')" using \<open>eval_ctx hole E'\<close> \<open>hole \<notin> FVars Q'\<close> eval_ctx.intros(8)[of hole E'] sorry
+  ultimately show ?case by auto
 next
   case (9 x E Q1 Q2 p M)
   have "M[N <- z] = If E[P <- x] Q1 Q2"
@@ -1126,14 +1158,15 @@ next
     using subst_If_inversion 9 blocked_inductive(1) by metis
   moreover from \<open>\<not> blocked z M\<close> have "\<not> blocked z Q0"
     using blocked_inductive(9) \<open>M = If Q0 Q1' Q2'\<close> by auto
-  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q0 = E'[P' <- x]"
+  ultimately obtain E' P' where "E'[N <- z] = E" and "P'[N <- z] = P" and "Q0 = E'[P' <- x]" and ctxxE: "eval_ctx x E'"
     using 9(2)[where M = Q0] 9 by fastforce
-  moreover have "x \<notin> FVars Q1'" and "x \<notin> FVars Q2'"
+  moreover have q1: "x \<notin> FVars Q1'" and q2: "x \<notin> FVars Q2'"
     using 9 \<open>x \<notin> FVars M \<union> FVars P \<union> FVars N\<close> \<open>M = If Q0 Q1' Q2'\<close>
     by auto
   ultimately have "M = (If E' Q1' Q2')[P' <- x] \<and> (If E Q1 Q2) = (If E' Q1' Q2')[N <- z] \<and> P = P'[N <- z]"
     using \<open>M = If Q0 Q1' Q2'\<close> \<open>Q1 = Q1'[N <- z]\<close> \<open>Q2 = Q2'[N <- z]\<close> \<open>Q0 = E'[P' <- x]\<close> by simp
-  then show ?case by blast
+  also have "eval_ctx x (If E' Q1' Q2')" using q1 q2 ctxxE eval_ctx.intros by metis
+  ultimately show ?case by blast
 qed
 
 section \<open>B3\<close>
@@ -2034,57 +2067,85 @@ proof -
     using b5_induction assms by blast
 qed
 
-definition getStuck :: "'var::var term \<Rightarrow> bool" where
-  "getStuck M = (\<exists>M'. M \<rightarrow>* M' \<and> stuck M')"
+section \<open>B6\<close>
 
 lemma b6:
-  assumes gsM: "getStuck M[N <- z]" and ls: "P \<lesssim> N"
+  assumes gsM: "getStuck M[N <- z]" and ls: "P \<lesssim> N" and znN: "z \<notin> FVars N"
   shows "diverge M[P <- z] \<or> getStuck M[P <- z]"
 proof -
   obtain M' where "M[N <- z] \<rightarrow>* M'" and "stuck M'" using gsM getStuck_def by auto
-  obtain R where "M' = R[N <- z]" and "diverge M[P <- z] \<or> M[P <- z] \<rightarrow>* R[P <- z]" sorry
-  obtain E hole Q where "eval_ctx hole E" and "R[N <- z] = E[Q <- hole]" and "stuckExp Q" sorry
-  obtain F Q' where "eval_ctx hole F" and "R = F[Q' <- hole]" and "Q'[N <- z] = Q" 
-    using b5 sorry
+  then obtain R k where *: "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>* R[P <- z] \<and> M' = R[N <- z])" 
+    unfolding beta_star_def
+    using ls znN stucks_are_normal[of M'] b4[of M N z _ M' P] by blast
+  then consider (A) "M[P <- z] \<rightarrow>* R[P <- z] \<and> M' = R[N <- z]" | (B) "diverge M[P <- z]" by auto
   then show ?thesis
-  proof(cases "Q' = Var z")
-    case True
-    then have "Q = N" sorry
-    then obtain N' where "stuckExp N'" and "diverge R[P <- z] \<and> R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]"
-      sorry
-    then show ?thesis sorry
-  next
-    case False
+  proof cases
+    case A
+    then obtain E hole Q where "eval_ctx hole E" and "R[N <- z] = E[Q <- hole]" and "stuckEx Q"
+      using \<open>stuck M'\<close> unfolding stuck_def by metis
+    then obtain F Q' where "eval_ctx hole F" and "F[N <- z] = E" and "R = F[Q' <- hole]" and "Q'[N <- z] = Q" 
+      using b2[of hole E R N z Q] sorry
     show ?thesis
-    proof (induction Q)
-      case 1
-      then show ?case sorry
-    next
-      case (2 Q)
-      then show ?case sorry
-    next
-      case (3 Q)
-      then show ?case sorry
-    next
-      case (4 Q1 Q2 Q3)
-      then show ?case sorry
-    next
-      case (5 x)
-      then show ?case sorry
-    next
-      case (6 Q1 Q2)
-      then show ?case sorry
-    next
-      case (7 x1 x2 Q)
-      then show ?case sorry
-    next
-      case (8 Q1 Q2)
-      then show ?case sorry
-    next
-      case (9 x1 Q1 Q2)
-      then show ?case sorry
+    proof(cases "Q' = Var z")
+      case True
+      then have "Q = N" using \<open>Q'[N <- z] = Q\<close> by simp
+      then have "diverge R[P <- z] \<or> (\<exists>N'. R[P <- z] \<rightarrow>* F[P <- z][N' <- hole] \<and> stuckEx N')"
+      proof (cases "diverge P")
+        case True
+        then have "diverge R[P <- z]" sorry
+        then show ?thesis using exI by blast
+      next
+        case False
+        then obtain N' where "N \<rightarrow>* N'" and "P \<rightarrow>* N'" and "normal N'"
+          using \<open>P \<lesssim> N\<close> unfolding less_defined_def
+          using diverge_or_normalizes[of P] by auto
+        then have "F[Q' <- hole][P <- z] = F[P <- z][P <- hole]"
+          using usubst_usubst[of hole z P F Q'] \<open>Q' = Var z\<close> (*hole freshness*)
+          sorry
+        then have t1: "R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]"
+          using \<open>R = F[Q' <- hole]\<close> \<open>P \<rightarrow>* N'\<close> div_ctx sorry (*need eval_ctx F[P <- z]*)
+        have "stuckEx N'" 
+          using \<open>N \<rightarrow>* N'\<close> \<open>Q = N\<close> \<open>stuckEx Q\<close> sorry
+        then show ?thesis sorry
+      qed
+      then obtain N' where "diverge R[P <- z] \<or> R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]" by auto
+      moreover have "stuck F[P <- z][N' <- hole]" sorry (*need eval_ctx F[P <- z] hole*)
+      ultimately show ?thesis unfolding getStuck_def
+        using A beta_star_diverge beta_star_sums by blast
+    next                              
+      case False
+      then have "stuckEx Q'[P <- z]"
+      proof(induction "Q'[P <- z]")
+        case 1
+        then show ?case sorry
+      next
+        case (2 x)
+        then show ?case sorry
+      next
+        case (3 x)
+        then show ?case sorry
+      next
+        case (4 x1 x2 x3)
+        then show ?case sorry
+      next
+        case (5 x)
+        then show ?case sorry
+      next
+        case (6 x1 x2)
+        then show ?case sorry
+      next
+        case (7 x1 x2 x)
+        then show ?case sorry
+      next
+        case (8 x1 x2)
+        then show ?case sorry
+      next
+        case (9 x1 x1 x2)
+        then show ?case sorry
+      qed
+      then show ?thesis sorry
     qed
-  qed
+  qed(auto)
 qed
 
 end
