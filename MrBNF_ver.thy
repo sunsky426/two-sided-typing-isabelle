@@ -158,6 +158,8 @@ binder_inductive (no_auto_equiv) val
 binder_inductive (no_auto_equiv) beta
   sorry (*TODO: Dmitriy*)
 
+section \<open>Basic Lemmas\<close>
+
 lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV :: 'a set| \<Longrightarrow>
 (\<And>\<rho>. P Zero \<rho>) \<Longrightarrow>
 (\<And>x \<rho>. \<forall>\<rho>. P x \<rho> \<Longrightarrow> P (Succ x) \<rho>) \<Longrightarrow>
@@ -400,7 +402,7 @@ lemma normalizes_stepsTo_normalizes: "M \<rightarrow> N \<Longrightarrow> normal
 
 definition less_defined :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> bool" (infix "\<lesssim>" 90) where
   "P \<lesssim> Q \<equiv> normalizes P \<longrightarrow> (\<exists>N. normal N \<and> P \<rightarrow>* N \<and> Q \<rightarrow>* N)"
-
+                                                                      
 lemma diverge_or_normalizes: "diverge M \<or> normalizes M"
 proof(rule disjCI)
   assume "\<not> normalizes M"
@@ -416,7 +418,7 @@ proof(rule disjCI)
   qed
 qed
 
-lemma betas_diverge:
+lemma betas_diverge_back:
   assumes "M \<rightarrow>[n] N" and "N \<Up>" shows "M \<Up>"
   using assms
 proof(induction rule:betas.induct)
@@ -424,23 +426,30 @@ proof(induction rule:betas.induct)
   then show ?case using diverge.intros by blast
 qed
 
-corollary beta_star_diverge:
+corollary beta_star_diverge_back:
   "M \<rightarrow>* N \<Longrightarrow> N \<Up> \<Longrightarrow> M \<Up>"
-  using betas_diverge beta_star_def by blast
+  using betas_diverge_back beta_star_def by blast
 
-(*lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
-proof (induction M)
-  case (6 M N)
-  then show ?case
-    by (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
-next
-  case (9 M N P)
-  then show ?case
-    by (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
-qed (auto intro!: num.intros stuckExp.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
-*)
 
-section \<open>Subst Lemmas\<close>
+lemma beta_diverge_forw:
+  assumes "M \<rightarrow> N" and "M \<Up>" shows "N \<Up>"
+proof -
+  obtain N' where "M \<rightarrow> N'" and "diverge N'" using \<open>diverge M\<close> diverge.cases by auto
+  then have "N = N'" using \<open>M \<rightarrow> N\<close> beta_deterministic by auto
+  then show "diverge N" using \<open>diverge N'\<close> by auto
+qed
+
+lemma betas_diverge_forw:
+  "M \<rightarrow>[k] N \<Longrightarrow> M \<Up> \<Longrightarrow> N \<Up>"
+proof(induction rule: betas.induct)
+  case (step M N n P)
+  then have "diverge N" using beta_diverge_forw by auto
+  then show ?case using \<open>diverge N \<Longrightarrow> diverge P\<close> by auto
+qed
+
+corollary beta_star_diverge_forw:
+  "M \<rightarrow>* N \<Longrightarrow> M \<Up> \<Longrightarrow> N \<Up>" 
+  unfolding beta_star_def using betas_diverge_forw by auto
 
 lemma num_usubst[simp]: "num M \<Longrightarrow> M[V <- x] = M"
   by (induct M rule: num.induct) auto
@@ -744,10 +753,29 @@ definition getStuck :: "'var::var term \<Rightarrow> bool" where
 lemma stuckEx_are_normal: "stuckEx M \<Longrightarrow> normal M" unfolding normal_def
   apply(induction M rule:stuckEx.induct)
      apply(auto)
-  sorry
+  subgoal for V V'
+  proof -
+    assume *: "Succ V \<rightarrow> V'" and "val V" and "\<not> num V"
+    then show ?thesis using *
+      apply(induction "Succ V" V' arbitrary: V rule:beta.induct)
+      apply(auto)
+      sorry
 
 lemma stucks_are_normal: "stuck M \<Longrightarrow> normal M"
   sorry
+
+lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
+  unfolding stuck_def
+proof (induction M)
+  case (6 M N)
+  then show ?case
+    by (auto intro!: num.intros stuckEx.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+next
+  case (9 M N P)
+  then show ?case
+    by (auto intro!: num.intros stuckEx.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+qed (auto intro!: num.intros stuckEx.intros beta.intros elim: num.cases intro: val.intros stuck.intros)
+
 
 section \<open>Judgements\<close>
 
@@ -1593,16 +1621,6 @@ proof (rule ccontr)
   qed(auto)
 qed
 
-lemma subst_val: "val V \<Longrightarrow> \<not> blocked z V \<Longrightarrow> val V[Q <- z]"
-  apply(binder_induction V avoiding: Q rule:val.induct)
-  apply(auto intro:val.intros blocked_inductive)
-  sorry
-
-lemma subst_same: "M[Var x <- x] = M"
-  apply(binder_induction M avoiding: x M rule:term_strong_induct)
-          apply(auto simp add: Int_Un_distrib)
-  done
-
 lemma beta_subst_unblocked:
   "M \<rightarrow> N \<Longrightarrow> \<not> blocked z M \<Longrightarrow> M[Q <- z] \<rightarrow> N[Q <- z]"
 proof(binder_induction M N avoiding: "App M (App (Var z) Q)" rule:beta.strong_induct)
@@ -1615,7 +1633,7 @@ next
   then have "\<not> blocked z Na" using 
       blocked_inductive by fast
   have "\<not> blocked z V" using \<open>\<not> blocked z (Pair V Na)\<close> blocked_inductive by metis
-  then have "val V[Q <- z]" using \<open>val V\<close> subst_val by auto
+  then have "val V[Q <- z]" using \<open>val V\<close> sorry
   then show ?case using OrdPair2 beta.intros(6) \<open>\<not> blocked z Na\<close> by auto
 next
   case (OrdLet Ma M' xy Na)
@@ -1662,7 +1680,7 @@ proof (induct k x M rule: my_induct)
         using usubst_usubst[of hole x N E "Var x"] usubst_usubst[of hole x Q E "Var x"]
         by auto
       have eval: "eval_ctx hole E" 
-        using strong_eval subst_same[of E x] \<open>hole \<noteq> x\<close>
+        using strong_eval subst_iden[of E x] \<open>hole \<noteq> x\<close>
         using spec[of "\<lambda>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- x]" "Var x"]
         by simp
       have "eval_ctx hole E[Q <- x]" and "eval_ctx hole E[N <- x]"
@@ -1724,7 +1742,7 @@ proof (induct k x M rule: my_induct)
           using eval_ctx_beta_star[of hole "E[Q <- x]" Q N'] \<open>Q \<rightarrow>* N'\<close> \<open>eval_ctx hole E[Q <- x]\<close>
           by blast
         ultimately have "E[Q <- x][Q <- hole] \<Up> \<or> (\<exists>m M'. P = M'[N <- x] \<and> E[Q <- x][Q <- hole] \<rightarrow>[m] M'[Q <- x])"
-          using beta_star_diverge[of "E[Q <- x][Q <- hole]" "E[Q <- x][N' <- hole]"]
+          using beta_star_diverge_back[of "E[Q <- x][Q <- hole]" "E[Q <- x][N' <- hole]"]
           using betas_path_sum beta_star_def
           by blast
         then show ?thesis using \<open>M[Q <- x] = E[Q <- x][Q <- hole]\<close> by auto
@@ -1782,11 +1800,12 @@ definition b5_prop :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> 'var
 
 lemma Succ_beta_star: "n \<rightarrow>* m \<Longrightarrow> Succ n \<rightarrow>* Succ m"
 proof -
-  obtain x where "eval_ctx x (Succ (Var x))"
+  assume "n \<rightarrow>* m"
+  obtain x :: 'a where "eval_ctx x (Succ (Var x))"
     using eval_ctx.intros by blast
   then show ?thesis 
-    using eval_ctx_beta_star[of x "Succ (Var x)" n m]
-    sorry
+    using eval_ctx_beta_star[of x "Succ (Var x)" n m] \<open>n \<rightarrow>* m\<close>
+    by simp
 qed
 
 lemma Pair_betas:
@@ -1814,9 +1833,6 @@ proof(coinduction arbitrary: M N rule:diverge.coinduct)
     using diverge.cases beta.intros by metis
   then show ?case by auto
 qed
-
-lemma less_defined_subst: "P \<lesssim> N \<Longrightarrow> normalizes M[N <- z] \<Longrightarrow> normalizes M[P <- z]"
-  sorry
 
 lemma b5_prop_reflexive: 
   assumes "val V" and "z \<notin> FVars V" 
@@ -1869,7 +1885,7 @@ proof -
   proof (cases "diverge P")
     case True
     then have "diverge M[P <- z]"
-      using \<open>M[P <- z] \<rightarrow>* P\<close> beta_star_diverge by blast
+      using \<open>M[P <- z] \<rightarrow>* P\<close> beta_star_diverge_back by blast
     then show ?thesis using \<open>\<not> diverge M[P <- z]\<close> by auto
   next
     case False
@@ -1954,7 +1970,7 @@ next
       have "M[P <- z] \<rightarrow>* Succ (W'[P <- z])"
         using U2 \<open>U = Succ W'\<close> by auto
       then have "\<not> diverge W'[P <- z]"
-        using "2.prems"(4) beta_star_diverge div_ctx eval_ctx.intros(1,4)
+        using "2.prems"(4) beta_star_diverge_back div_ctx eval_ctx.intros(1,4)
             usubst_simps(2,5)
         by metis
       then obtain W where "val W" and "W'[P <- z] \<rightarrow>* W" and "b5_prop n W P N z"
@@ -1990,7 +2006,7 @@ next
     then have "val M1" and "val M2"
       using subst_val_inversion 3(1, 2) (*what if M1 or M2 = Suc z, N = Zero*) sorry (*why do we need you?*)
     have "\<not> (M1[P <- z] \<Up>)" 
-      using m1m2 U2 beta_star_diverge[of "M[P <- z]" "U[P <- z]"]
+      using m1m2 U2 beta_star_diverge_back[of "M[P <- z]" "U[P <- z]"]
       using "3.prems"(4) Pair_div[of "M1[P <- z]" "M2[P <- z]"] 
       by auto
     then have "\<not> (M2[P <- z] \<Up>)" sorry (*what if M2 diverge and M1 stuck*)
@@ -2083,7 +2099,7 @@ lemma b6:
   shows "diverge M[P <- z] \<or> getStuck M[P <- z]"
 proof -
   obtain M' where "M[N <- z] \<rightarrow>* M'" and "stuck M'" using gsM getStuck_def by auto
-  then obtain R k where *: "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>* R[P <- z] \<and> M' = R[N <- z])" 
+  then obtain R where *: "diverge M[P <- z] \<or> (M[P <- z] \<rightarrow>* R[P <- z] \<and> M' = R[N <- z])" 
     unfolding beta_star_def
     using ls znN stucks_are_normal[of M'] b4[of M N z _ M' P] by blast
   then consider (A) "M[P <- z] \<rightarrow>* R[P <- z] \<and> M' = R[N <- z]" | (B) "diverge M[P <- z]" by auto
@@ -2093,7 +2109,7 @@ proof -
     then obtain E hole Q where "eval_ctx hole E" and "R[N <- z] = E[Q <- hole]" and "stuckEx Q"
       using \<open>stuck M'\<close> unfolding stuck_def by metis
     then obtain F Q' where "eval_ctx hole F" and "F[N <- z] = E" and "R = F[Q' <- hole]" and "Q'[N <- z] = Q" 
-      using b2[of hole E R N z Q] sorry
+      using b2[of hole E R N z Q] (*need \<not> blocked z R, need hole freshness*) sorry
     show ?thesis
     proof(cases "Q' = Var z")
       case True
@@ -2118,9 +2134,9 @@ proof -
         then show ?thesis sorry
       qed
       then obtain N' where "diverge R[P <- z] \<or> R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]" by auto
-      moreover have "stuck F[P <- z][N' <- hole]" sorry (*need eval_ctx F[P <- z] hole*)
+      moreover have "stuck F[P <- z][N' <- hole]" sorry (*need eval_ctx hole F[P <- z]*)
       ultimately show ?thesis unfolding getStuck_def
-        using A beta_star_diverge beta_star_sums by blast
+        using A beta_star_diverge_back beta_star_sums by blast
     next                              
       case False
       then have "stuckEx Q'[P <- z]"
@@ -2155,6 +2171,212 @@ proof -
       then show ?thesis sorry
     qed
   qed(auto)
+qed
+
+section \<open>Thm 4.7\<close>
+
+inductive finitely_verifiable :: "type \<Rightarrow> bool" where
+  "finitely_verifiable Nat"
+| "finitely_verifiable Ok"
+| "finitely_verifiable F1 \<Longrightarrow> finitely_verifiable F2 \<Longrightarrow> finitely_verifiable (Prod F1 F2)"
+
+inductive safe :: "type \<Rightarrow> bool" where
+  "safe Nat"
+| "safe Ok"
+| "safe A \<Longrightarrow> safe B \<Longrightarrow> safe (Prod A B)"
+| "safe A \<Longrightarrow> safe B \<Longrightarrow> safe (To A B)"
+| "safe A \<Longrightarrow> finitely_verifiable F \<Longrightarrow> safe (OnlyTop A F)"
+
+lemma diverge_xor_normalizes: "\<not> (normalizes M \<and> diverge M)"
+proof
+  assume "normalizes M \<and> diverge M"
+  then have "normalizes M" and "diverge M" by auto
+  then obtain N where "normal N" and "M \<rightarrow>* N" unfolding normalizes_def by auto
+  then have "diverge N" using \<open>diverge M\<close> beta_star_diverge_forw by auto
+  then obtain N' where "N \<rightarrow> N'" using diverge.cases by auto
+  then show False using \<open>normal N\<close> unfolding normal_def by auto
+qed
+
+lemma less_defined_diverge:
+  assumes "P \<lesssim> Q" and "diverge Q"
+  shows "diverge P"
+  using assms(2)
+proof(rule contrapos_pp[of "diverge Q" "diverge P"])
+  assume "\<not> diverge P"
+  then have "normalizes P" using diverge_or_normalizes by auto
+  then obtain N where "normal N" and "Q \<rightarrow>* N" 
+    using \<open>P \<lesssim> Q\<close> unfolding less_defined_def by auto
+  then have "normalizes Q" unfolding normalizes_def by auto
+  then show "\<not> diverge Q" using diverge_xor_normalizes by auto
+qed
+
+lemma less_defined_diverge_subst: "Q \<lesssim> N \<Longrightarrow> diverge M[N <- z] \<Longrightarrow> diverge M[Q <- z]"
+proof(cases "blocked z M")
+  case True
+  assume ls: "Q \<lesssim> N" and Md: "diverge M[N <- z]"
+  then obtain E hole where "M = E[Var z <- hole]" and "hole \<noteq> z" and niN: "hole \<notin> FVars N" and niQ: "hole \<notin> FVars Q" 
+    and ctx_subst: "\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]"
+    using blocked_fresh_hole[of "FVars N \<union> FVars Q"] finite_FVars by auto
+  then have "M[N <- z] = E[N <- z][N <- hole]" and "M[Q <- z] = E[Q <- z][Q <- hole]"
+    using usubst_usubst[of hole z N] usubst_usubst[of hole z Q]
+    by auto
+  also have "eval_ctx hole E[N <- z]" and "eval_ctx hole E[Q <- z]"
+    using niN niQ ctx_subst by auto
+  ultimately have "diverge M[Q <- z]"
+    using ls Md less_defined_diverge[of Q N] div_ctx sorry
+  then show ?thesis sorry
+next
+  case False
+  then show ?thesis sorry
+qed
+
+theorem b7_induction:
+  assumes cl: "FVars M[N <- z] = {}" and ls: "Q \<lesssim> N" and nzN: "z \<notin> FVars N"
+  shows "M[N <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot> \<Longrightarrow> M[Q <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot>"
+    and "M[N <- z] \<notin> \<T>\<lblot>A\<rblot> \<Longrightarrow> M[Q <- z] \<notin> \<T>\<lblot>A\<rblot>"
+proof(induction A arbitrary: M)
+  case Nat
+  {
+    case 1
+    then consider (A) "(M[N <- z] \<in> \<T>\<lblot>Nat\<rblot>)" | (B) "(M[N <- z] \<Up>)" 
+      using bottom_semantics.simps by auto
+    then show ?case
+    proof cases
+      case A
+      then obtain n where "num n" and "M[N <- z] \<rightarrow>* n"
+        using tau_semantics.simps type_semantics.simps(2) by auto
+      then have "diverge M[Q <- z] \<or> M[Q <- z] \<rightarrow>* n" 
+        using ls val.intros(2)[of n] nzN b5[of n z N M Q] b5_prop_def[of n]
+        by (metis num_not_haveFix)
+      then show ?thesis 
+        unfolding bottom_semantics.simps tau_semantics.simps type_semantics.simps(2)
+        using \<open>num n\<close> val.intros(2) by auto
+    next
+      case B
+      then show ?thesis unfolding bottom_semantics.simps 
+        using less_defined_diverge_subst ls by blast
+    qed
+  next
+    case 2
+    consider (A) "\<exists>V. M[N <- z] \<rightarrow>* V \<and> val V" | (B) "getStuck M[N <- z]" | (C) "diverge M[N <- z]"
+      using val_stuck_step diverge_or_normalize sorry
+    then show ?case
+      proof cases
+        case A
+        then obtain V where "M[N <- z] \<rightarrow>* V" and "val V" and "V \<notin> \<lblot>Nat\<rblot>"
+          using 2 unfolding tau_semantics.simps by blast
+        then obtain W where "diverge M[Q <- z] \<or> M[Q <- z] \<rightarrow>* W" (*W same type of value as V*)
+          using b5[of V z N M Q] b5_prop_def[of V] sorry
+        then show ?thesis sorry
+      next
+        case B
+        then have "diverge M[Q <- z] \<or> getStuck M[Q <- z]"
+          using ls nzN b6[of M N z Q] by auto
+        then show ?thesis unfolding tau_semantics.simps sorry (*need val xor stuck*)
+      next
+        case C
+        then have "diverge M[Q <- z]" 
+          using ls less_defined_diverge_subst by auto
+        then show ?thesis unfolding tau_semantics.simps 
+          using diverge_xor_normalizes vals_are_normal normalizes_def
+          by auto
+      qed
+  }
+next
+  case (Prod A1 A2)
+  {
+    case 1
+    then consider (A) "diverge M[N <- z]" | (B) "\<exists>V1 V2. M[N <- z] \<rightarrow>* (Pair V1 V2) \<and> V1 \<in> \<lblot>A1\<rblot> \<and> V2 \<in> \<lblot>A2\<rblot> \<and> val (Pair V1 V2)"
+      unfolding bottom_semantics.simps tau_semantics.simps type_semantics.simps
+      by auto
+    then show ?case
+    proof cases
+      case A
+      then have "diverge M[Q <- z]" 
+        using ls less_defined_diverge_subst by auto                 
+      then show ?thesis by simp
+    next
+      case B
+      then obtain V1 V2 where steps: "M[N <- z] \<rightarrow>* term.Pair V1 V2" and "V1 \<in> \<lblot>A1\<rblot>" and "V2 \<in> \<lblot>A2\<rblot>" and "val (Pair V1 V2)"
+        by auto
+      then consider 
+        (B1) "diverge M[Q <- z]" | (B2) "\<exists>W. M[Q <- z] \<rightarrow>* W \<and> b5_prop (term.Pair V1 V2) W Q N z"
+        using nzN ls b5[of "Pair V1 V2" z N M Q] by auto
+      then show ?thesis
+      proof cases
+        case B2
+        then obtain W where M2W: "M[Q <- z] \<rightarrow>* W" and "b5_prop (term.Pair V1 V2) W Q N z" by auto
+        then obtain W1 W2 where "W = Pair W1[Q <- z] W2[Q <- z]" and "W1[N <- z] = V1" and "W2[N <- z] = V2"
+          unfolding b5_prop_def
+          sorry
+        then have "W1[N <- z] \<in> \<lblot>A1\<rblot>" and "W2[N <- z] \<in> \<lblot>A2\<rblot>"
+          using \<open>V1 \<in> \<lblot>A1\<rblot>\<close> \<open>V2 \<in> \<lblot>A2\<rblot>\<close> by auto
+        then have "W1[N <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A1\<rblot>" and "W2[N <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A2\<rblot>" 
+          unfolding bottom_semantics.simps tau_semantics.simps 
+          using beta_star_def betas.refl sorry
+        then have "W1[Q <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A1\<rblot>" and "W2[Q <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A2\<rblot>" 
+          using Prod.IH(1)[of W1] Prod.IH(3)[of W2] by auto
+        then consider (a) "diverge W1[Q <- z] \<or> diverge W2[Q <- z]" | (b) "W1[Q <- z] \<in> \<T>\<lblot>A1\<rblot> \<and> W2[Q <- z] \<in> \<T>\<lblot>A2\<rblot>"
+          unfolding bottom_semantics.simps by auto
+        then show ?thesis
+        proof cases
+          case a
+          then have "diverge W"
+            using \<open>W = Pair W1[Q <- z] W2[Q <- z]\<close> sorry
+          then show ?thesis using beta_star_diverge_back M2W by auto
+        next
+          case b
+          then have "W \<in> \<T>\<lblot>Prod A1 A2\<rblot>" unfolding tau_semantics.simps type_semantics.simps
+            sorry
+          then have "M[Q <- z] \<in> \<T>\<lblot>Prod A1 A2\<rblot>" unfolding tau_semantics.simps
+            using M2W beta_star_sums by blast
+          then show ?thesis unfolding bottom_semantics.simps by auto
+        qed
+      qed(auto)
+    qed
+  next
+    case 2
+    then show ?case sorry
+  }
+next
+  case (To A1 A2)
+  {
+    case 1
+    then show ?case sorry
+  next
+    case 2
+    then show ?case sorry
+  }
+next
+  case (OnlyTo A1 A2)
+  {
+    case 1
+    then show ?case sorry
+  next
+    case 2
+    then show ?case sorry
+  }
+next
+  case Ok
+  {
+    case 1
+    then show ?case sorry
+  next
+    case 2
+    then show ?case sorry
+  }
+qed
+
+theorem b7: 
+  assumes cl: "FVars M[N <- z] = {}" and ls: "Q \<lesssim> N"
+  shows "(M[N <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot> \<longrightarrow> M[Q <- z] \<in> \<T>\<^sub>\<bottom>\<lblot>A\<rblot>) \<and> (M[N <- z] \<notin> \<T>\<lblot>A\<rblot> \<longrightarrow> M[Q <- z] \<notin> \<T>\<lblot>A\<rblot>)"
+proof(cases "z \<in> FVars M")
+  case True
+  then have "z \<notin> FVars N" using cl FVars_usubst[of M N z] by auto
+  then show ?thesis using cl ls b7_induction[of M N z Q A] by blast
+next
+  case False
+  then show ?thesis using subst_idle[of z M] by auto
 qed
 
 end
