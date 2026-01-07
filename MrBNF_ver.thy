@@ -1777,8 +1777,8 @@ lemma haveFix_Pair:
 
 definition b5_prop :: "'var::var term \<Rightarrow> 'var term \<Rightarrow> 'var term \<Rightarrow> 'var term \<Rightarrow> 'var \<Rightarrow>  bool" where
   "b5_prop V W P N z \<equiv> (\<not> haveFix V \<longrightarrow> W = V) \<and> 
-    (\<exists>V1 V2. V = Pair V1 V2 \<longrightarrow> (\<exists>W1 W2. W = Pair W1[P <- z] W2[P <- z] \<and> W1[N <- z] = V1 \<and> W2[N <- z] = V2)) \<and>
-    (\<exists>f x R. V = Fix f x R \<longrightarrow> (\<exists>Q. W = Fix f x Q[P <- z] \<and> Q[N <- z] = R))"
+    (\<forall>V1 V2. V = Pair V1 V2 \<longrightarrow> (\<exists>W1 W2. W = Pair W1[P <- z] W2[P <- z] \<and> W1[N <- z] = V1 \<and> W2[N <- z] = V2)) \<and>
+    (\<forall>f x R. V = Fix f x R \<longrightarrow> z \<noteq> f \<longrightarrow> z \<noteq> x \<longrightarrow> (\<exists>Q. W = Fix f x Q[P <- z] \<and> Q[N <- z] = R))"
 
 lemma Succ_beta_star: "n \<rightarrow>* m \<Longrightarrow> Succ n \<rightarrow>* Succ m"
 proof -
@@ -1821,31 +1821,34 @@ lemma less_defined_subst: "P \<lesssim> N \<Longrightarrow> normalizes M[N <- z]
 lemma b5_prop_reflexive: 
   assumes "val V" and "z \<notin> FVars V" 
   shows "b5_prop V V P N z"
-  using \<open>val V\<close>
-proof(cases V rule:val.cases)
-  case 1
-  then show ?thesis unfolding b5_prop_def by auto
+  using \<open>val V\<close> \<open>z \<notin> FVars V\<close>
+proof(binder_induction V avoiding: z rule: val.strong_induct[unfolded Un_insert_right Un_empty_right, consumes 1, case_names 0 1 2 3 4])
+  case (1 x)
+  then show ?case unfolding b5_prop_def by auto
 next
-  case 2
-  then show ?thesis
-  proof(cases V rule:num.cases)
+  case (2 n)
+  then show ?case
+  proof(cases n rule:num.cases)
   qed(auto simp add:b5_prop_def)
 next
   case (3 V1 V2)
-  then show ?thesis using \<open>z \<notin> FVars V\<close>
-  proof -
-    have "z \<notin> FVars (Pair V1 V2)" using \<open>z \<notin> FVars V\<close> \<open>V = Pair V1 V2\<close> by auto
-    then have "z \<notin> FVars V1" and "z \<notin> FVars V2" by auto
-    then have "V1 = V1[P <- z] \<and> V2 = V2[P <- z] \<and> V1[N <- z] = V1 \<and> V2[N <- z] = V2" by auto
-    then show ?thesis using \<open>V = Pair V1 V2\<close>
-      by (metis b5_prop_def term.distinct(63))
-  qed
+  from 3(3) have "z \<notin> FVars V1" and "z \<notin> FVars V2" by auto
+  then have "V1 = V1[P <- z] \<and> V2 = V2[P <- z] \<and> V1[N <- z] = V1 \<and> V2[N <- z] = V2" by auto
+  then show ?case using b5_prop_def by fastforce
 next
   case (4 f x R)
-  then have "haveFix V" using haveFix.intros(1) by auto
-  then show ?thesis unfolding b5_prop_def
-    using \<open>z \<notin> FVars V\<close> subst_idle term.distinct(63)
-    by blast
+  have "haveFix (Fix f x R)" by (metis haveFix.intros(1))
+  moreover { fix f' x' R'
+    assume fxR': "f' \<noteq> z" "x' \<noteq> z" "Fix f x R = Fix f' x' R'"
+    then have "z \<notin> FVars (Fix f' x' R')" using 4(2) by metis
+    with fxR' have "z \<notin> FVars R'" by auto
+    then have "Fix f' x' R'[P <- z] = Fix f' x' R' \<and> R'[N <- z] = R'"
+      by simp
+  }
+  ultimately show ?case using 4(1,2) unfolding b5_prop_def
+    apply (auto simp del: term.inject)
+    apply metis
+    done
 qed
 
 thm b5_prop_def
@@ -2008,7 +2011,10 @@ next
       case True
       then have b5VW: "b5_prop (Pair V1 V2) (Pair W1[P <- z] W2[P <- z]) P N z" unfolding b5_prop_def
         using m1m2 m1 m2
+(*
         by (metis term.distinct(55) term.inject(7))
+*)
+        sorry
       have "(Pair M1[P <- z] M2[P <- z]) \<rightarrow>* Pair W1[P <- z] W2[P <- z]"
         using m1w1 m2w2 Pair_beta_star \<open>val W1\<close> sorry (*W1[P <- z] is val?*)
       then have "M[P <- z] \<rightarrow>* (Pair W1[P <- z] W2[P <- z])"
@@ -2045,7 +2051,10 @@ next
       by auto
     then have "b5_prop (Fix f x R) U[P <- z] P N z" unfolding b5_prop_def
       using \<open>f \<noteq> z\<close> \<open>x \<noteq> z\<close> \<open>f \<notin> FVars P\<close> \<open>x \<notin> FVars P\<close> haveFix.intros(1)
+(*
       by (metis term.distinct(63) usubst_simps(7))
+*)
+      sorry
     moreover have "val U[P <- z]" using q1 val.intros(4)
       by (simp add: \<open>f \<noteq> z\<close> \<open>f \<notin> FVars P\<close> \<open>x \<noteq> z\<close> \<open>x \<notin> FVars P\<close>)
     ultimately show ?thesis using U2 by auto
