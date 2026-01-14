@@ -750,20 +750,6 @@ definition stuck :: "'var::var term \<Rightarrow> bool" where
 definition getStuck :: "'var::var term \<Rightarrow> bool" where
   "getStuck M = (\<exists>N. stuck N \<and> M \<rightarrow>* N)"
 
-lemma stuckEx_are_normal: "stuckEx M \<Longrightarrow> normal M" unfolding normal_def
-  apply(induction M rule:stuckEx.induct)
-     apply(auto)
-  subgoal for V V'
-  proof -
-    assume *: "Succ V \<rightarrow> V'" and "val V" and "\<not> num V"
-    then show ?thesis using *
-      apply(induction "Succ V" V' arbitrary: V rule:beta.induct)
-      apply(auto)
-      sorry
-
-lemma stucks_are_normal: "stuck M \<Longrightarrow> normal M"
-  sorry
-
 lemma val_stuck_step: "val M \<or> stuck M \<or> (\<exists>N. M \<rightarrow> N)"
   unfolding stuck_def
 proof (induction M)
@@ -2010,38 +1996,34 @@ next
       using "3.prems"(4) Pair_div[of "M1[P <- z]" "M2[P <- z]"] 
       by auto
     then have "\<not> (M2[P <- z] \<Up>)" sorry (*what if M2 diverge and M1 stuck*)
-    obtain W1 where "val W1" and m1w1: "M1[P <- z] \<rightarrow>* W1" and "b5_prop V1 W1 P N z"
-      using 3(3)[of M1] m1 beta_star_def betas.refl
-      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M1[P <- z] \<Up>)\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
-      by (metis Un_iff term.set(8))
-    moreover obtain W2 where "val W2" and m2w2: "M2[P <- z] \<rightarrow>* W2" and "b5_prop V2 W2 P N z"
-      using 3(4)[of M2] m2 beta_star_def betas.refl
-      using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M2[P <- z] \<Up>)\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
-      by (metis Un_iff term.set(8))
-    ultimately have *: "val (Pair W1 W2)" and **: "M[P <- z] \<rightarrow>* (Pair W1 W2)"
-      using val.intros(3) U2 m1m2 beta_star_sums[of "M[P <- z]" "U[P <- z]" "Pair W1 W2"] Pair_beta_star
-       apply auto
-      by blast
-    then show ?thesis
+    show ?thesis
     proof(cases "haveFix (Pair V1 V2)")
       case True
-      then have b5VW: "b5_prop (Pair V1 V2) (Pair W1[P <- z] W2[P <- z]) P N z" unfolding b5_prop_def
-        using m1m2 m1 m2
-(*
-        by (metis term.distinct(55) term.inject(7))
-*)
-        sorry
-      have "(Pair M1[P <- z] M2[P <- z]) \<rightarrow>* Pair W1[P <- z] W2[P <- z]"
-        using m1w1 m2w2 Pair_beta_star \<open>val W1\<close> sorry (*W1[P <- z] is val?*)
-      then have "M[P <- z] \<rightarrow>* (Pair W1[P <- z] W2[P <- z])"
-        using U2 m1m2 beta_star_sums by auto
-      then have "val (Pair W1[P <- z] W2[P <- z]) \<and> M[P <- z] \<rightarrow>* (Pair W1[P <- z] W2[P <- z]) \<and> b5_prop (term.Pair V1 V2) (Pair W1 W2)[P <- z] P N z"
-        using m1w1 m2w2 b5VW sorry (*W1[P <- z] W2[P <- z] is val?*)
+      then have b5VU: "b5_prop (Pair V1 V2) U[P <- z] P N z" unfolding b5_prop_def
+        using m1m2 m1 m2 term.distinct(55) term.inject(7)
+        by auto
+      have "val M1[P <- z]" and "val M2[P <- z]" 
+        using \<open>val M1\<close> \<open>val M2\<close> sorry (*is right?*)
+      then have "val U[P <- z]" using m1m2 val.intros by auto
+      then have "val U[P <- z] \<and> M[P <- z] \<rightarrow>* U[P <- z] \<and> b5_prop (term.Pair V1 V2) U[P <- z] P N z"
+        using b5VU U2 by auto
       then show ?thesis by auto
     next
       case False
-      then have "\<not> haveFix V1" and "\<not> haveFix V2"
-        using haveFix_Pair by auto
+      obtain W1 where "val W1" and "M1[P <- z] \<rightarrow>* W1" and "b5_prop V1 W1 P N z"
+        using 3(3)[of M1] m1 beta_star_def betas.refl
+        using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M1[P <- z] \<Up>)\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
+        by (metis Un_iff term.set(8))
+      moreover obtain W2 where "val W2" and "M2[P <- z] \<rightarrow>* W2" and "b5_prop V2 W2 P N z"
+        using 3(4)[of M2] m2 beta_star_def betas.refl
+        using \<open>P \<lesssim> N\<close> \<open>z \<notin> FVars N\<close> \<open>\<not> (M2[P <- z] \<Up>)\<close> \<open>z \<notin> FVars (Pair V1 V2)\<close>
+        by (metis Un_iff term.set(8))
+      ultimately have *: "val (Pair W1 W2)" and **: "M[P <- z] \<rightarrow>* (Pair W1 W2)"
+        using val.intros(3) U2 m1m2 beta_star_sums[of "M[P <- z]" "U[P <- z]" "Pair W1 W2"] Pair_beta_star
+         apply auto
+        by blast
+      have "\<not> haveFix V1" and "\<not> haveFix V2"
+        using False haveFix_Pair by auto
       then have "V1 = W1 \<and> V2 = W2" 
         using \<open>b5_prop V1 W1 P N z\<close> \<open>b5_prop V2 W2 P N z\<close> unfolding b5_prop_def by blast
       then have "val (Pair V1 V2) \<and> M[P <- z] \<rightarrow>* (Pair V1 V2) \<and> b5_prop (Pair V1 V2) (Pair V1 V2) P N z"
@@ -2079,7 +2061,7 @@ qed
 
 lemma b5:
   assumes "val V" and "z \<notin> FVars N" and "M[N <- z] \<rightarrow>* V" and "P \<lesssim> N"
-  shows "diverge M[P <- z] \<or> (\<exists>W Q. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z)"
+  shows "diverge M[P <- z] \<or> (\<exists>W. val W \<and> M[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z)"
   using assms
 proof -
   have "z \<notin> FVars M[N <- z]" using \<open>z \<notin> FVars N\<close>
@@ -2093,6 +2075,69 @@ proof -
 qed
 
 section \<open>B6\<close>
+
+thm val.cases
+
+lemma eval_ctx_beta_inverse: 
+  assumes "eval_ctx hole E" and "E[M <- hole] \<rightarrow> E[N <- hole]"
+  shows "M \<rightarrow> N"
+  using assms
+  sorry
+
+lemma stuckEx_are_normal: "stuckEx M \<Longrightarrow> normal M"
+proof(rule ccontr)
+  assume stuck: "stuckEx M" and "\<not> normal M"
+  then obtain M' where steps: "M \<rightarrow> M'" unfolding normal_def by auto
+  show False using stuck
+  proof(cases M rule:stuckEx.cases)
+    case (1 V)
+    then show ?thesis using vals_are_normal[of V] steps beta.cases[of M M'] unfolding normal_def
+      by auto
+  next
+    case (2 V N P)
+    show ?thesis 
+      using 2 vals_are_normal[of V] steps beta.cases[of M M'] unfolding normal_def
+      by (smt (verit, best) MrBNF_ver.num.simps term.distinct(26,27,29,31,68) term.inject(3))
+  next
+    case (3 V M)
+    then show ?thesis
+      using 3 vals_are_normal[of V] steps beta.cases[of M M'] unfolding normal_def
+      by (smt (verit) beta.cases term.distinct(42,43,44,62,70) term.inject(5))
+  next
+    case (4 V xy M)
+    then show ?thesis sorry
+  qed
+qed
+
+lemma stucks_are_normal: "stuck M \<Longrightarrow> normal M"
+proof(rule ccontr)
+  assume "stuck M"
+  then obtain hole E N where ctx: "eval_ctx hole E" and "M = E[N <- hole]" and "stuckEx N"
+    unfolding stuck_def by auto
+  assume "\<not> normal M"
+  then obtain M' where "M \<rightarrow> M'" unfolding normal_def by auto
+  then show False sorry 
+qed
+
+thm num_not_haveFix
+lemma b5_prop_not_fix: 
+  assumes "val V" and nFix: "\<forall>f x Q. V \<noteq> Fix f x Q" and b5: "b5_prop V W P N z"
+  shows "\<forall>f x Q. W \<noteq> Fix f x Q"
+  using assms(1)
+proof (cases V rule:val.cases)
+  case (1 x)
+  then show ?thesis using b5 nFix haveFix.simps unfolding b5_prop_def by force
+next
+  case 2
+  then show ?thesis using num_not_haveFix b5 nFix unfolding b5_prop_def
+    by auto
+next
+  case (3 V W)
+  then show ?thesis using b5 unfolding b5_prop_def by force
+next
+  case (4 f x Q)
+  then show ?thesis by (simp add: nFix)
+qed
 
 lemma b6:
   assumes gsM: "getStuck M[N <- z]" and ls: "P \<lesssim> N" and znN: "z \<notin> FVars N"
@@ -2113,62 +2158,67 @@ proof -
     show ?thesis
     proof(cases "Q' = Var z")
       case True
-      then have "Q = N" using \<open>Q'[N <- z] = Q\<close> by simp
-      then have "diverge R[P <- z] \<or> (\<exists>N'. R[P <- z] \<rightarrow>* F[P <- z][N' <- hole] \<and> stuckEx N')"
+      then have "blocked z R" using \<open>eval_ctx hole F\<close> \<open>R = F[Q' <- hole]\<close> unfolding blocked_def by auto
+      thm blocked_fresh_hole[of "FVars P" z R]
+      then obtain F' hole' where 
+        "\<forall>N. hole' \<notin> FVars N \<longrightarrow> eval_ctx hole' F'[N <- z]" and
+        new_ctx: "R = F'[Var z <- hole']" and
+        fresh_hole: "hole' \<notin> (z ; FVars P)"
+        using finite_FVars blocked_fresh_hole[of "FVars P" z R] by auto
+      then have FP: "eval_ctx hole' F'[P <- z]" by simp
+      from True have "Q = N" using \<open>Q'[N <- z] = Q\<close> by simp
+      then have "diverge R[P <- z] \<or> getStuck R[P <- z]"
       proof (cases "diverge P")
         case True
-        then have "diverge R[P <- z]" sorry
+        have "R[P <- z] = F'[P <- z][P <- hole']" 
+          using new_ctx fresh_hole usubst_usubst[of hole' z P F' "Var z"] by simp
+        then have "diverge R[P <- z]" using FP True div_ctx[of hole' "F'[P <- z]" P] by simp
         then show ?thesis using exI by blast
       next
         case False
         then obtain N' where "N \<rightarrow>* N'" and "P \<rightarrow>* N'" and "normal N'"
           using \<open>P \<lesssim> N\<close> unfolding less_defined_def
           using diverge_or_normalizes[of P] by auto
-        then have "F[Q' <- hole][P <- z] = F[P <- z][P <- hole]"
-          using usubst_usubst[of hole z P F Q'] \<open>Q' = Var z\<close> (*hole freshness*)
-          sorry
-        then have t1: "R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]"
-          using \<open>R = F[Q' <- hole]\<close> \<open>P \<rightarrow>* N'\<close> div_ctx sorry (*need eval_ctx F[P <- z]*)
+        then have "F'[Q' <- hole'][P <- z] = F'[P <- z][P <- hole']"
+          using fresh_hole usubst_usubst[of hole' z P F' Q'] \<open>Q' = Var z\<close>
+          by auto
+        then have t1: "R[P <- z] \<rightarrow>* F'[P <- z][N' <- hole']"
+          using True new_ctx insertI2
+          using \<open>P \<rightarrow>* N'\<close> FP eval_ctx_beta_star[of hole' "F'[P <- z]" P N']
+          by auto
         have "stuckEx N'" 
-          using \<open>N \<rightarrow>* N'\<close> \<open>Q = N\<close> \<open>stuckEx Q\<close> sorry
-        then show ?thesis sorry
+          using \<open>N \<rightarrow>* N'\<close> \<open>Q = N\<close> \<open>stuckEx Q\<close> betas.cases[of N _ N'] unfolding beta_star_def
+          using eval_ctx.intros(1) usubst_simps(5) stucks_are_normal[of N] unfolding normal_def stuck_def 
+          by metis
+        then have "stuck F'[P <- z][N' <- hole']" unfolding stuck_def using FP by auto
+        then have "getStuck R[P <- z]" unfolding getStuck_def using t1 by auto
+        then show ?thesis by auto
       qed
-      then obtain N' where "diverge R[P <- z] \<or> R[P <- z] \<rightarrow>* F[P <- z][N' <- hole]" by auto
-      moreover have "stuck F[P <- z][N' <- hole]" sorry (*need eval_ctx hole F[P <- z]*)
-      ultimately show ?thesis unfolding getStuck_def
+      then show ?thesis unfolding getStuck_def
         using A beta_star_diverge_back beta_star_sums by blast
     next                              
       case False
-      then have "stuckEx Q'[P <- z]"
-      proof(induction "Q'[P <- z]")
-        case 1
-        then show ?case sorry
+      have "stuckEx Q'[N <- z]" using \<open>Q'[N <- z] = Q\<close> \<open>stuckEx Q\<close> by simp
+      then have "diverge Q'[P <- z] \<or> stuckEx Q'[P <- z]"
+      proof(cases "Q'[N <- z]" rule:stuckEx.cases)
+        case (1 V)
+        then show ?thesis sorry
       next
-        case (2 x)
-        then show ?case sorry
+        case (2 V N P)
+        then show ?thesis sorry
       next
-        case (3 x)
-        then show ?case sorry
+        case (3 V M)
+        then obtain R1 R2 where "Q' = App R1 R2" and "R1[N <- z] = V" and "R2[N <- z] = M"
+          using False subst_App_inversion[of Q' N z V M] by blast
+        then consider (A) "R1[P <- z] \<Up>" | "\<exists>W. val W \<and> R1[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z"
+          using b5[of V z N R1 P] sorry
+        then show ?thesis using b5_prop_not_fix sorry
       next
-        case (4 x1 x2 x3)
-        then show ?case sorry
-      next
-        case (5 x)
-        then show ?case sorry
-      next
-        case (6 x1 x2)
-        then show ?case sorry
-      next
-        case (7 x1 x2 x)
-        then show ?case sorry
-      next
-        case (8 x1 x2)
-        then show ?case sorry
-      next
-        case (9 x1 x1 x2)
-        then show ?case sorry
+        case (4 V xy M)
+        then show ?thesis sorry
       qed
-      then show ?thesis sorry
+      then show ?thesis sorry 
+      (*how would be obtain stuck R[P <- z] from stuckEx Q'[P <- z], knowing that I may have F[P <- z] not an eval_ctx*)
     qed
   qed(auto)
 qed
@@ -2214,9 +2264,9 @@ lemma less_defined_diverge_subst: "Q \<lesssim> N \<Longrightarrow> diverge M[N 
 proof(cases "blocked z M")
   case True
   assume ls: "Q \<lesssim> N" and Md: "diverge M[N <- z]"
-  then obtain E hole where "M = E[Var z <- hole]" and "hole \<noteq> z" and niN: "hole \<notin> FVars N" and niQ: "hole \<notin> FVars Q" 
+  obtain E hole where "M = E[Var z <- hole]" and "hole \<noteq> z" and niN: "hole \<notin> FVars N" and niQ: "hole \<notin> FVars Q" 
     and ctx_subst: "\<forall>N. hole \<notin> FVars N \<longrightarrow> eval_ctx hole E[N <- z]"
-    using blocked_fresh_hole[of "FVars N \<union> FVars Q"] finite_FVars by auto
+    using blocked_fresh_hole[of "FVars N \<union> FVars Q"] finite_FVars True by auto
   then have "M[N <- z] = E[N <- z][N <- hole]" and "M[Q <- z] = E[Q <- z][Q <- hole]"
     using usubst_usubst[of hole z N] usubst_usubst[of hole z Q]
     by auto
