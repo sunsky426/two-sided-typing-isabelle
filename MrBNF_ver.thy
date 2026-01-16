@@ -158,6 +158,9 @@ binder_inductive (no_auto_equiv) val
 binder_inductive (no_auto_equiv) beta
   sorry (*TODO: Dmitriy*)
 
+binder_inductive (no_auto_equiv) stuckEx
+  sorry
+
 section \<open>Basic Lemmas\<close>
 
 lemma term_strong_induct: "\<forall>\<rho>. |K \<rho> :: 'a ::var set| <o |UNIV :: 'a set| \<Longrightarrow>
@@ -2119,7 +2122,43 @@ proof(rule ccontr)
   then show False sorry 
 qed
 
-thm num_not_haveFix
+lemma dset_finite: "finite (dset xy)"
+  sorry
+
+lemma If_beta_star: "n \<rightarrow>* m \<Longrightarrow> If n M1 M2 \<rightarrow>* If m M1 M2"
+proof -
+  assume "n \<rightarrow>* m"
+  obtain x :: 'a where "eval_ctx x (If (Var x) M1 M2)" and "x \<notin> FVars M1" and "x \<notin> FVars M2"
+    using eval_ctx.intros(1, 9)
+    by (metis UnCI arb_element finite_FVars term.set(8))
+  then show ?thesis 
+    using eval_ctx_beta_star[of x "If (Var x) M1 M2" n m] \<open>n \<rightarrow>* m\<close>
+    by auto
+qed
+
+lemma App_beta_star: "V \<rightarrow>* V' \<Longrightarrow> App V M \<rightarrow>* App V' M"
+proof -
+  assume "V \<rightarrow>* V'"
+  obtain x :: 'a where "eval_ctx x (App (Var x) M)" and "x \<notin> FVars M"
+    using eval_ctx.intros
+    by (metis UnCI arb_element finite_FVars term.set(8))
+  then show ?thesis 
+    using eval_ctx_beta_star[of x "App (Var x) M" V V'] \<open>V \<rightarrow>* V'\<close>
+    by auto
+qed
+
+lemma Let_beta_star: "V \<rightarrow>* V' \<Longrightarrow> Let xy V M \<rightarrow>* Let xy V' M"
+proof -
+  assume "V \<rightarrow>* V'"
+  obtain x :: 'a where "eval_ctx x (Let xy (Var x) M)" and "x \<notin> FVars M" and "x \<notin> dset xy"
+    using eval_ctx.intros(1, 9) dset_finite
+    using UnCI arb_element finite_FVars sorry
+  then show ?thesis 
+    using eval_ctx_beta_star[of x "Let xy (Var x) M" V V'] \<open>V \<rightarrow>* V'\<close>
+    sorry
+  thm usubst_simps(9)[of x xy V "Var x" M]
+qed
+
 lemma b5_prop_not_fix: 
   assumes "val V" and nFix: "\<forall>f x Q. V \<noteq> Fix f x Q" and b5: "b5_prop V W P N z"
   shows "\<forall>f x Q. W \<noteq> Fix f x Q"
@@ -2137,6 +2176,48 @@ next
 next
   case (4 f x Q)
   then show ?thesis by (simp add: nFix)
+qed
+
+lemma b5_prop_not_num: 
+assumes "val V" and nNum: "\<not> num V" and b5: "b5_prop V W P N z"
+  shows "\<not> num W"
+  using assms
+proof (binder_induction V avoiding: "Var z" rule:val.strong_induct)
+  case (1 x)
+  then have "W = Var x" using haveFix.simps unfolding b5_prop_def by force
+  then show ?thesis using 1(1) by auto
+next
+  case (2 n)
+  then show ?thesis by auto
+next
+  case (3 V W)
+  then show ?thesis using b5 unfolding b5_prop_def
+    by (metis num.simps term.distinct(58,7))
+next
+  case (4 f x)
+  then show ?thesis using b5 unfolding b5_prop_def
+    by (metis Un_Int_eq(1,2) empty_not_insert haveFix.intros(1) num_not_haveFix term.set(5))
+qed
+
+lemma b5_prop_not_pair: 
+assumes "val V" and nNum: "\<nexists>V1 V2. V = Pair V1 V2" and b5: "b5_prop V W P N z"
+  shows "\<nexists>W1 W2. W = Pair W1 W2"
+  using assms
+proof (binder_induction V avoiding: "Var z" rule:val.strong_induct)
+  case (1 x)
+  then have "W = Var x" using haveFix.simps unfolding b5_prop_def by force
+  then show ?thesis using 1(1) by auto
+next
+  case (2 n)
+  then show ?thesis
+    by (simp add: b5_prop_def num_not_haveFix)
+next
+  case (3 V W)
+  then show ?thesis by auto
+next
+  case (4 f x)
+  then show ?thesis using b5 unfolding b5_prop_def
+    by (metis Un_Int_eq(1,2) empty_not_insert term.Vrs_Inj term.distinct(63))
 qed
 
 lemma b6:
@@ -2199,24 +2280,115 @@ proof -
     next                              
       case False
       have "stuckEx Q'[N <- z]" using \<open>Q'[N <- z] = Q\<close> \<open>stuckEx Q\<close> by simp
-      then have "diverge Q'[P <- z] \<or> stuckEx Q'[P <- z]"
+      then have "diverge Q'[P <- z] \<or> getStuck Q'[P <- z]"
       proof(cases "Q'[N <- z]" rule:stuckEx.cases)
         case (1 V)
-        then show ?thesis sorry
+        then obtain V' where "Q' = Succ V'" and "V = V'[N <- z]"
+          using False subst_Succ_inversion[of Q' N z V] by auto
+        then consider (A) "V'[P <- z] \<Up>" | (B) "\<exists>W. val W \<and> V'[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z"
+          using 1(2) znN ls betas.refl b5[of V z N V' P] unfolding beta_star_def by auto
+        then show ?thesis
+        proof(cases)
+          case A
+          obtain thole :: 'a where "eval_ctx thole (Succ (Var thole))" using eval_ctx.intros by blast
+          moreover have "Q'[P <- z] = (Succ (Var thole)) [V'[P <- z] <- thole]" using \<open>Q' = Succ V'\<close> by auto
+          ultimately show ?thesis using div_ctx A by metis
+        next
+          case B
+          then obtain W where "val W" and "V'[P <- z] \<rightarrow>* W" and "b5_prop V W P N z" by auto
+          then have "\<not> num W" using 1 b5_prop_not_num[of V] by blast
+          then have "stuckEx (Succ W)" using \<open>val W\<close> stuckEx.intros by auto
+          then have "stuck (Succ W)"
+            using eval_ctx.intros(1) stuck_def by force
+          then have "getStuck (Succ V'[P <- z])" unfolding getStuck_def
+            using Succ_beta_star \<open>V'[P <- z] \<rightarrow>* W\<close> beta_star_def by blast
+          then show ?thesis using \<open>Q' = Succ V'\<close> by auto
+        qed
       next
-        case (2 V N P)
-        then show ?thesis sorry
+        case (2 V P1 P2)
+        then obtain V' P1' P2' where "Q' = If V' P1' P2'" and 
+          "V'[N <- z] = V" and "P1'[N <- z] = P1" and "P2'[N <- z] = P2" 
+          using False subst_If_inversion[of Q' N z V P1 P2] by auto
+        then consider (A) "V'[P <- z] \<Up>" | (B) "\<exists>W. val W \<and> V'[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z"
+          using 2(2) znN ls betas.refl b5[of V z N V' P] unfolding beta_star_def by auto
+        then show ?thesis
+        proof(cases)
+          case A
+          obtain thole where "eval_ctx thole (If (Var thole) P1'[P <- z] P2'[P <- z])" and *: "thole \<notin> FVars P1'[P <- z]" and **: "thole \<notin> FVars P2'[P <- z]"
+            using eval_ctx.intros(1, 9) 
+            using ex_new_if_finite finite_FVars infinite_UNIV
+            by (metis Un_iff term.set(4))
+          moreover have "Q'[P <- z] = (If (Var thole) P1'[P <- z] P2'[P <- z]) [V'[P <- z] <- thole]" 
+            using \<open>Q' = If V' P1' P2'\<close> * ** by auto
+          ultimately show ?thesis using div_ctx A by metis
+        next
+          case B
+          then obtain W where "val W" and "V'[P <- z] \<rightarrow>* W" and "b5_prop V W P N z" by auto
+          then have "\<not> num W" using 2 b5_prop_not_num[of V] by blast
+          then have "stuckEx (If W P1'[P <- z] P2'[P <- z])" using \<open>val W\<close> stuckEx.intros by auto
+          then have "stuck (If W P1'[P <- z] P2'[P <- z])"
+            using eval_ctx.intros(1) stuck_def by force
+          then have "getStuck (If V'[P <- z] P1'[P <- z] P2'[P <- z])" unfolding getStuck_def
+            using If_beta_star \<open>V'[P <- z] \<rightarrow>* W\<close> beta_star_def by blast
+          then show ?thesis using \<open>Q' = If V' P1' P2'\<close> by auto
+        qed
       next
         case (3 V M)
         then obtain R1 R2 where "Q' = App R1 R2" and "R1[N <- z] = V" and "R2[N <- z] = M"
           using False subst_App_inversion[of Q' N z V M] by blast
-        then consider (A) "R1[P <- z] \<Up>" | "\<exists>W. val W \<and> R1[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z"
-          using b5[of V z N R1 P] sorry
-        then show ?thesis using b5_prop_not_fix sorry
-      next
-        case (4 V xy M)
-        then show ?thesis sorry
-      qed
+        then consider (A) "R1[P <- z] \<Up>" | (B) "\<exists>W. val W \<and> R1[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z"
+          using 3(2) znN ls betas.refl b5[of V z N R1 P] unfolding beta_star_def by auto
+        then show ?thesis
+        proof(cases)
+          case A
+          obtain thole where *: "eval_ctx thole (App (Var thole) R2[P <- z])" and "thole \<notin> FVars R2[P <- z]"
+            using eval_ctx.intros(1, 3)
+            by (metis ex_new_if_finite finite_FVars infinite_UNIV)
+          then have "Q'[P <- z] = (App (Var thole) R2[P <- z])[R1[P <- z] <- thole]" 
+            using \<open>Q' = App R1 R2\<close> usubst_simps(6) by simp
+          then show ?thesis using A * div_ctx by metis
+        next
+          case B
+          then obtain W where "val W" and *: "R1[P <- z] \<rightarrow>* W" and "b5_prop V W P N z" by auto
+          then have "\<nexists>f x Q. W = Fix f x Q" using 3(2, 3) b5_prop_not_fix by blast
+          then have "stuckEx (App W R2[P <- z])" using \<open>val W\<close> stuckEx.intros(3)[of W] by auto
+          moreover obtain thole :: 'a where "eval_ctx thole (Var thole)" using eval_ctx.intros by auto
+          ultimately have "stuck (App W R2[P <- z])" unfolding stuck_def
+            by (meson eval_ctx.intros(1) usubst_simps(5))
+          then have "getStuck (App R1[P <- z] R2[P <- z])" unfolding getStuck_def
+            using App_beta_star * by auto
+          then show ?thesis using \<open>Q' = App R1 R2\<close> by simp
+        qed    
+        next
+          case (4 V xy M)
+          have av1: "z \<notin> dset xy" and av2: "FVars N \<inter> dset xy = {}" and av3: "FVars P \<inter> dset xy = {}" sorry
+          then obtain V' M' where q': "Q' = Let xy V' M'" and "V'[N <- z] = V" and "M'[N <- z] = M"
+            using False 4 subst_Let_inversion[of Q' N z xy V M] by blast
+          then consider (A) "V'[P <- z] \<Up>" | (B) "\<exists>W. val W \<and> V'[P <- z] \<rightarrow>* W \<and> b5_prop V W P N z"
+            using 4(2) znN ls betas.refl b5[of V z N V' P] unfolding beta_star_def by auto
+          then show ?thesis
+          proof(cases)
+            case A
+            obtain thole where "eval_ctx thole (Let xy (Var thole) M'[P <- z])" and *: "thole \<notin> FVars M'[P <- z]" and **: "thole \<notin> dset xy"
+              using eval_ctx.intros(1, 8)
+              using ex_new_if_finite finite_FVars infinite_UNIV
+              sorry
+            moreover have "Q'[P <- z] = (Let xy (Var thole) M'[P <- z]) [V'[P <- z] <- thole]" 
+              using q' * ** av1 av2 av3 usubst_simps(9)[of z xy P V' M'] sorry  (*xy avoids V'*)
+            ultimately show ?thesis using div_ctx A by metis
+          next
+            case B
+            then obtain W where "val W" and "V'[P <- z] \<rightarrow>* W" and "b5_prop V W P N z" by auto
+            then have "\<nexists>W1 W2. W = Pair W1 W2" using 4 b5_prop_not_pair[of V] by blast
+            then have "stuckEx (Let xy W M'[P <- z])" using \<open>val W\<close> stuckEx.intros by auto
+            then have "stuck (Let xy W M'[P <- z])"
+              using eval_ctx.intros(1) stuck_def by force
+            then have "getStuck (Let xy V'[P <- z] M'[P <- z])" unfolding getStuck_def
+              using Let_beta_star[of "V'[P <- z]" W xy "M'[P <- z]"] \<open>V'[P <- z] \<rightarrow>* W\<close> 
+              unfolding beta_star_def by auto
+            then show ?thesis using \<open>Q' = Let xy V' M'\<close> av1 av2 av3 sorry (*xy avoids V'*)
+          qed
+        qed
       then show ?thesis sorry 
       (*how would be obtain stuck R[P <- z] from stuckEx Q'[P <- z], knowing that I may have F[P <- z] not an eval_ctx*)
     qed
